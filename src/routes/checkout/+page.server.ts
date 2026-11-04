@@ -1,0 +1,258 @@
+import { redirect, fail } from '@sveltejs/kit';
+import { db } from '$lib/server/db';
+import { orders, orderItems, medicines, customerAddresses, loyaltyWallets, loyaltyTransactions, inventoryTransactions, notifications, adminSettings, doctors, doctorReferralEvents } from '$lib/server/db/schema';
+import { eq, inArray } from 'drizzle-orm';
+import { z } from 'zod';
+import type { Actions, PageServerLoad } from './$types';
+import { randomBytes } from 'crypto';
+
+const checkoutSchema = z.object({
+	addressId: z.string().optional().default(''),
+	fulfillmentType: z.enum(['DELIVERY', 'PICKUP']).default('DELIVERY'),
+	paymentMethod: z.enum(['RAZORPAY', 'COD']),
+	cartJson: z.string().min(2),
+	prescriptionId: z.string().uuid().optional().or(z.literal('')),
+	redeemCoins: z.coerce.number().int().min(0).default(0),
+	discreetPackaging: z.coerce.boolean().default(false)
+});
+
+export const load: PageServerLoad = async ({ locals }) => {
+	if (!locals.user) redirect(302, '/auth/login');
+
+	const [addresses, wallet] = await Promise.all([
+		db.select().from(customerAddresses).where(eq(customerAddresses.userId, locals.user.id)),
+		db.select().from(loyaltyWallets).where(eq(loyaltyWallets.userId, locals.user.id)).then(r => r[0] ?? null)
+	]);
+
+	const razorpayKeyId = process.env.RAZORPAY_KEY_ID ?? '';
+
+	return { addresses, wallet, razorpayKeyId };
+};
+
+export const actions: Actions = {
+	placeOrder: async ({ request, locals, cookies }) => {
+		if (!locals.user) redirect(302, '/auth/login');
+
+		const formData = Object.fromEntries(await request.formData());
+		const result = checkoutSchema.safeParse(formData);
+		if (!result.success) {
+			return fail(400, { error: result.error.flatten().fieldErrors });
+		}
+
+		const { addressId, fulfillmentType, paymentMethod, cartJson, redeemCoins, discreetPackaging, prescriptionId } = result.data;
+
+		let rawCart: unknown;
+		try {
+			rawCart = JSON.parse(cartJson);
+		} catch {
+			return fail(400, { error: 'Invalid cart data' });
+		}
+		const parsedCart = z.record(z.string().uuid(), z.object({ qty: z.number().int().min(1).max(100) }).passthrough()).safeParse(rawCart);
+		if (!parsedCart.success) return fail(400, { error: 'Cart contains invalid items or quantities' });
+		const cartItems = parsedCart.data;
+
+		const medicineIds = Object.keys(cartItems);
+		if (medicineIds.length === 0) return fail(400, { error: 'Cart is empty' });
+
+		let address = null;
+		if (fulfillmentType === 'DELIVERY') {
+			if (!z.string().uuid().safeParse(addressId).success) return fail(400, { error: 'Choose a delivery address' });
+			const [savedAddress] = await db.select().from(customerAddresses).where(eq(customerAddresses.id, addressId));
+			if (!savedAddress || savedAddress.userId !== locals.user.id) return fail(400, { error: 'Invalid address' });
+			address = savedAddress;
+		}
+
+		const medsFromDb = await db.select({
+			id: medicines.id,
+			name: medicines.name,
+			discountedPrice: medicines.discountedPrice,
+			price: medicines.price,
+			stockQuantity: medicines.stockQuantity,
+			requiresPrescription: medicines.requiresPrescription,
+			isAgeRestricted: medicines.isAgeRestricted
+		}).from(medicines).where(inArray(medicines.id, medicineIds));
+
+		const medMap = new Map(medsFromDb.map(m => [m.id, m]));
+
+		// Validate stock
+		for (const [id, item] of Object.entries(cartItems)) {
+			const med = medMap.get(id);
+			if (!med) return fail(400, { error: 'A medicine in your cart is no longer available' });
+			if (med.stockQuantity < item.qty) return fail(400, { error: `Insufficient stock for ${med.name}` });
+		}
+
+		const hasRxItems = medsFromDb.some(m => m.requiresPrescription && cartItems[m.id]);
+		const hasAgeRestricted = medsFromDb.some(m => m.isAgeRestricted && cartItems[m.id]);
+
+		if (hasRxItems && !prescriptionId) {
+			return fail(400, { error: 'A prescription is required for one or more items in your cart. Please upload a prescription first.' });
+		}
+
+		if (hasAgeRestricted && !locals.user.ageVerified) {
+			return fail(400, { error: 'Age verification required for restricted products. Please contact support.' });
+		}
+
+		// Get loyalty settings
+		const settings = await db.select().from(adminSettings);
+		const settingsMap: Record<string, string> = {};
+		settings.forEach(s => settingsMap[s.key] = s.value);
+
+		const coinValueRupees = parseFloat(settingsMap['coin_value_rupees'] ?? '0.1');
+		const maxCoinsPerOrder = parseInt(settingsMap['max_coins_per_order'] ?? '100');
+
+		let coinsToRedeem = 0;
+		let loyaltyDiscount = 0;
+		if (redeemCoins > 0) {
+			const wallet = await db.select().from(loyaltyWallets).where(eq(loyaltyWallets.userId, locals.user.id)).then(r => r[0]);
+			if (wallet && wallet.balanceCoins >= redeemCoins) {
+				coinsToRedeem = Math.min(redeemCoins, maxCoinsPerOrder, wallet.balanceCoins);
+				loyaltyDiscount = coinsToRedeem * coinValueRupees;
+			}
+		}
+
+		// Calculate totals
+		let totalMrp = 0;
+		let totalDiscount = 0;
+		for (const [id, item] of Object.entries(cartItems)) {
+			const med = medMap.get(id)!;
+			const originalPrice = Number(med.price) * item.qty;
+			const discountedPrice = Number(med.discountedPrice) * item.qty;
+			totalMrp += originalPrice;
+			totalDiscount += originalPrice - discountedPrice;
+		}
+		const subtotal = totalMrp - totalDiscount;
+		const deliveryFee = fulfillmentType === 'DELIVERY' && subtotal < 500 ? 40 : 0;
+		const grandTotal = Math.max(0, subtotal - loyaltyDiscount + deliveryFee);
+
+		// Determine initial order status
+		let status = 'PENDING';
+		if (hasRxItems) status = 'PRESCRIPTION_REQUIRED';
+		if (hasRxItems && prescriptionId) status = 'UNDER_VERIFICATION';
+
+		// Generate order number
+		const now = new Date();
+		const datePart = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
+		const randPart = Math.random().toString(36).substring(2, 6).toUpperCase();
+		const orderNumber = `EMD-${datePart}-${randPart}`;
+
+		const addressSnapshot = address ? {
+			recipientName: address.recipientName,
+			phone: address.phone,
+			addressLine1: address.addressLine1,
+			addressLine2: address.addressLine2,
+			landmark: address.landmark,
+			city: address.city,
+			state: address.state,
+			postalCode: address.postalCode
+		} : { fulfillmentType: 'PICKUP' };
+
+		const referralCode = cookies.get('referral_code');
+		const [referringDoctor] = referralCode
+			? await db.select({ id: doctors.id, referralCode: doctors.referralCode }).from(doctors)
+				.where(eq(doctors.referralCode, referralCode)).limit(1)
+			: [];
+		const pickupToken = fulfillmentType === 'PICKUP' ? randomBytes(4).toString('hex').toUpperCase() : null;
+
+		// Use DB transaction
+		const newOrder = await db.transaction(async (tx) => {
+			// Reserve inventory
+			for (const [id, item] of Object.entries(cartItems)) {
+				const med = medMap.get(id)!;
+				const newStock = med.stockQuantity - item.qty;
+				await tx.update(medicines).set({ stockQuantity: newStock, updatedAt: new Date() })
+					.where(eq(medicines.id, id));
+				await tx.insert(inventoryTransactions).values({
+					medicineId: id,
+					type: 'ORDER_RESERVED',
+					quantityChange: -item.qty,
+					previousQuantity: med.stockQuantity,
+					newQuantity: newStock,
+					referenceType: 'ORDER',
+					referenceId: orderNumber,
+					notes: `Reserved for order ${orderNumber}`
+				});
+			}
+
+			// Deduct loyalty coins if redeeming
+			if (coinsToRedeem > 0) {
+				const wallet = await tx.select().from(loyaltyWallets)
+					.where(eq(loyaltyWallets.userId, locals.user!.id)).for('update').then(r => r[0]);
+				if (wallet && wallet.balanceCoins >= coinsToRedeem) {
+					await tx.update(loyaltyWallets).set({
+						balanceCoins: wallet.balanceCoins - coinsToRedeem,
+						totalRedeemedCoins: wallet.totalRedeemedCoins + coinsToRedeem,
+						updatedAt: new Date()
+					}).where(eq(loyaltyWallets.id, wallet.id));
+
+					await tx.insert(loyaltyTransactions).values({
+						walletId: wallet.id,
+						type: 'DEBIT_REDEMPTION',
+						coins: -coinsToRedeem,
+						previousBalance: wallet.balanceCoins,
+						newBalance: wallet.balanceCoins - coinsToRedeem,
+						referenceNote: `Redeemed ${coinsToRedeem} coins for order ${orderNumber}`
+					});
+				}
+			}
+
+			// Create order
+			const [order] = await tx.insert(orders).values({
+				orderNumber,
+				customerId: locals.user!.id,
+				deliveryAddressId: address?.id ?? null,
+				addressSnapshot,
+				fulfillmentType,
+				pickupToken,
+				doctorId: referringDoctor?.id ?? null,
+				referralToken: referralCode ?? null,
+				status,
+				totalMrp: String(totalMrp.toFixed(2)),
+				totalDiscount: String(totalDiscount.toFixed(2)),
+				loyaltyCoinsRedeemed: coinsToRedeem,
+				loyaltyCoinsDiscount: String(loyaltyDiscount.toFixed(2)),
+				deliveryFee: String(deliveryFee.toFixed(2)),
+				grandTotal: String(grandTotal.toFixed(2)),
+				paymentMethod,
+				paymentStatus: paymentMethod === 'COD' ? 'PENDING' : 'PENDING',
+				prescriptionId: prescriptionId || null,
+				discreetPackaging,
+				isAgeRestrictedOrder: hasAgeRestricted
+			}).returning();
+
+			// Create order items
+			const itemValues = Object.entries(cartItems).map(([id, item]) => ({
+				orderId: order.id,
+				medicineId: id,
+				medicineName: medMap.get(id)!.name,
+				quantity: item.qty,
+				unitPrice: String(Number(medMap.get(id)!.discountedPrice).toFixed(2)),
+				totalPrice: String((Number(medMap.get(id)!.discountedPrice) * item.qty).toFixed(2)),
+				requiresPrescription: medMap.get(id)?.requiresPrescription ?? false
+			}));
+			await tx.insert(orderItems).values(itemValues);
+
+			// Notify customer
+			await tx.insert(notifications).values({
+				userId: locals.user!.id,
+				title: 'Order Placed!',
+				message: `Your order ${orderNumber} has been placed. ${hasRxItems ? 'Please wait for prescription verification.' : 'We\'ll confirm your order shortly.'}`,
+				type: 'ORDER_STATUS',
+				link: `/customer/orders/${order.id}`
+			});
+			if (referringDoctor) {
+				await tx.insert(doctorReferralEvents).values({
+					doctorId: referringDoctor.id,
+					referralCode: referringDoctor.referralCode,
+					eventType: 'ORDER_PLACED',
+					customerId: locals.user!.id,
+					orderId: order.id
+				});
+			}
+
+			return order;
+		});
+		if (referringDoctor) cookies.delete('referral_code', { path: '/' });
+
+		redirect(302, `/customer/orders/${newOrder.id}?placed=1`);
+	}
+};

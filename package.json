@@ -1,0 +1,52 @@
+{
+  "name": "e-medical-sehore",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite dev --host",
+    "build": "vite build",
+    "preview": "vite preview",
+    "check": "svelte-check --tsconfig ./tsconfig.json",
+    "check:watch": "svelte-check --tsconfig ./tsconfig.json --watch",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "db:push": "drizzle-kit push",
+    "db:seed": "node --loader ts-node/esm src/lib/server/db/seed.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.50.1",
+    "@sveltejs/adapter-auto": "^4.0.0",
+    "@sveltejs/adapter-node": "^5.2.12",
+    "@sveltejs/kit": "^2.17.2",
+    "@sveltejs/vite-plugin-svelte": "^5.0.3",
+    "@tailwindcss/vite": "^4.0.6",
+    "@types/node": "^22.13.4",
+    "@types/qrcode": "^1.5.5",
+    "svelte": "^5.20.2",
+    "svelte-check": "^4.1.4",
+    "tailwindcss": "^4.0.6",
+    "typescript": "^5.7.3",
+    "vite": "^6.1.0",
+    "vitest": "^3.0.5"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": ["esbuild", "@swc/core", "sharp", "lightningcss", "better-sqlite3"]
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.749.0",
+    "@aws-sdk/s3-request-presigner": "^3.749.0",
+    "drizzle-kit": "^0.30.4",
+    "drizzle-orm": "^0.39.3",
+    "jose": "^6.0.8",
+    "lucide-svelte": "^0.475.0",
+    "postgres": "^3.4.5",
+    "qrcode": "^1.5.4",
+    "razorpay": "^2.9.5",
+    "unpdf": "^2.1.0",
+    "zod": "^3.24.2"
+  }
+}
