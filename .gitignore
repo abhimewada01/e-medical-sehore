@@ -7,3 +7,6 @@ node_modules/
 static/uploads/
 *.log
 dist/
+
+.vercel/
+.env.production.local
