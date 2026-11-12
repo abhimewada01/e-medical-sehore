@@ -4,6 +4,15 @@
 	import { Activity, Bell, ChevronDown, CircleUserRound, Menu, Microscope, Pill, ShoppingCart, Stethoscope, User, X } from 'lucide-svelte';
 
 	let { user }: { user: App.Locals['user'] } = $props();
+	const dashboardPaths: Record<string, string> = {
+		SUPER_ADMIN: '/admin/dashboard',
+		PHARMACY_ADMIN: '/admin/dashboard',
+		PHARMACIST: '/admin/dashboard',
+		DOCTOR: '/doctor/dashboard',
+		DELIVERY: '/',
+		CUSTOMER: '/customer/dashboard'
+	};
+	let dashboardHref = $derived(user ? dashboardPaths[user.role] ?? '/customer/dashboard' : '/auth/login');
 	let mobileMenuOpen = $state(false);
 	let cartCount = $state(0);
 	const navLinks = [
@@ -32,9 +41,9 @@
 		<a href="/shop" class="delivery-location"><span class="location-pin"><Activity size={16} /></span><span><small>DELIVERING TO</small><strong>Sehore, Madhya Pradesh</strong></span><ChevronDown size={15} /></a>
 		<div class="desktop-links">{#each navLinks as link}<a href={link.href} class:current={$page.url.pathname === link.href}>{link.label}</a>{/each}</div>
 		<div class="header-actions">
-			{#if user}<a href="/{user.role.toLowerCase()}/dashboard" class="icon-action" aria-label="Notifications"><Bell size={19} /></a>{/if}
+			{#if user}<a href={dashboardHref} class="icon-action" aria-label="Notifications"><Bell size={19} /></a>{/if}
 			<a href="/cart" class="icon-action cart-action" aria-label="Shopping cart"><ShoppingCart size={20} />{#if cartCount > 0}<span class="cart-count">{cartCount > 99 ? '99+' : cartCount}</span>{/if}</a>
-			{#if user}<a href="/{user.role.toLowerCase()}/dashboard" class="account-link"><User size={16} /><span>{user.fullName.split(' ')[0]}</span></a>{:else}<a href="/auth/login" class="login-link">Sign in</a><a href="/auth/register" class="account-link signup-link"><span>Create account</span></a>{/if}
+			{#if user}<a href={dashboardHref} class="account-link"><User size={16} /><span>{user.fullName.split(' ')[0]}</span></a>{:else}<a href="/auth/login" class="login-link">Sign in</a><a href="/auth/register" class="account-link signup-link"><span>Create account</span></a>{/if}
 			<button class="menu-toggle" aria-label={mobileMenuOpen ? 'Close menu' : 'Open menu'} onclick={() => mobileMenuOpen = !mobileMenuOpen}>{#if mobileMenuOpen}<X size={21} />{:else}<Menu size={21} />{/if}</button>
 		</div>
 	</div>
@@ -46,7 +55,7 @@
 	<a href="/shop" class:active={$page.url.pathname.startsWith('/shop')}><Pill size={20} strokeWidth={1.8} /><span>Pharmacy</span></a>
 	<a href="/about/doctors" class:active={$page.url.pathname.startsWith('/about/doctors')}><Stethoscope size={20} strokeWidth={1.8} /><span>Doctors</span></a>
 	<a href="/shop?category=devices" class:active={$page.url.searchParams.get('category') === 'devices'}><Microscope size={20} strokeWidth={1.8} /><span>Diagnostics</span></a>
-	<a href={user ? `/${user.role.toLowerCase()}/dashboard` : '/auth/login'} class:active={$page.url.pathname.includes('dashboard') || $page.url.pathname.includes('login')}><CircleUserRound size={20} strokeWidth={1.8} /><span>Account</span></a>
+	<a href={dashboardHref} class:active={$page.url.pathname.includes('dashboard') || $page.url.pathname.includes('login')}><CircleUserRound size={20} strokeWidth={1.8} /><span>Account</span></a>
 </nav>
 
 <style>

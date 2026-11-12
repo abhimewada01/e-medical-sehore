@@ -28,6 +28,13 @@ export const handle: Handle = async ({ event, resolve }) => {
 	}
 
 	const { pathname } = event.url;
+	// Older builds linked SUPER_ADMIN accounts to /super_admin/dashboard, but
+	// the admin portal now lives under /admin. Normalize all legacy URLs before
+	// route resolution so bookmarks and already-open links keep working.
+	if (pathname === '/super_admin' || pathname.startsWith('/super_admin/')) {
+		const suffix = pathname.slice('/super_admin'.length);
+		redirect(302, `/admin${suffix}${event.url.search}`);
+	}
 	const isAdminPath = pathname === '/admin' || pathname.startsWith('/admin/');
 	const isDoctorPath = pathname === '/doctor' || pathname.startsWith('/doctor/');
 	const isCustomerPath = pathname === '/customer' || pathname.startsWith('/customer/');
