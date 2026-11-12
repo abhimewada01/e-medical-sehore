@@ -49,6 +49,12 @@ pnpm run db:push
 pnpm dlx tsx src/lib/server/db/seed.ts
 ```
 
+For an existing production database, first apply the checked-in compatibility migration after confirming it is backed up:
+```bash
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f drizzle/0001_security_and_auth.sql
+```
+The migration adds persistent login throttling and password reset storage, and the unique webhook event index. Keep the database URL private.
+
 ### 4. Run Development Server
 ```bash
 pnpm run dev
@@ -115,7 +121,7 @@ pnpm run check
 
 ## 🐳 Docker & Production Deployment
 
-For Vercel, use a hosted PostgreSQL database and configure the environment variables from `.env.example` in the Vercel project settings. Set `PUBLIC_APP_URL` to the deployed URL and generate a unique `JWT_SECRET`. Configure Cloudflare R2 credentials for prescription and medicine uploads. Run database migrations against the hosted database before serving traffic; never point production at your local database.
+For Vercel, use a hosted PostgreSQL database and configure the environment variables from `.env.example` in the Vercel project settings. Use the provider's pooled connection URL, set `PUBLIC_APP_URL` to the deployed HTTPS URL, and generate a unique `JWT_SECRET`. Configure Cloudflare R2 credentials for private prescription uploads, plus `RAZORPAY_WEBHOOK_SECRET` and Resend `RESEND_API_KEY`/`EMAIL_FROM` if enabling payment webhooks and password reset email. Apply schema changes to the intended hosted database before deploying code that uses them; never point production at your local database. Do not enable prescription uploads until private R2 storage is configured.
 
 ### Docker Deployment
 ```bash

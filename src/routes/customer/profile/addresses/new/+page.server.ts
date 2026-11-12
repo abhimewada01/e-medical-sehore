@@ -1,5 +1,6 @@
 import { db } from '$lib/server/db';
 import { customerAddresses } from '$lib/server/db/schema';
+import { eq } from 'drizzle-orm';
 import { fail, redirect } from '@sveltejs/kit';
 import { z } from 'zod';
 import type { Actions, PageServerLoad } from './$types';
@@ -30,17 +31,22 @@ export const actions: Actions = {
 			return fail(400, { errors: result.error.flatten().fieldErrors, values: formData });
 		}
 
-		await db.insert(customerAddresses).values({
-			userId: locals.user.id,
-			recipientName: result.data.recipientName,
-			phone: result.data.phone,
-			addressLine1: result.data.addressLine1,
-			addressLine2: result.data.addressLine2 || null,
-			landmark: result.data.landmark || null,
-			city: result.data.city,
-			state: result.data.state,
-			postalCode: result.data.postalCode,
-			isDefault: result.data.isDefault
+		await db.transaction(async (tx) => {
+			if (result.data.isDefault) {
+				await tx.update(customerAddresses).set({ isDefault: false }).where(eq(customerAddresses.userId, locals.user!.id));
+			}
+			await tx.insert(customerAddresses).values({
+				userId: locals.user!.id,
+				recipientName: result.data.recipientName,
+				phone: result.data.phone,
+				addressLine1: result.data.addressLine1,
+				addressLine2: result.data.addressLine2 || null,
+				landmark: result.data.landmark || null,
+				city: result.data.city,
+				state: result.data.state,
+				postalCode: result.data.postalCode,
+				isDefault: result.data.isDefault
+			});
 		});
 
 		redirect(302, '/checkout');

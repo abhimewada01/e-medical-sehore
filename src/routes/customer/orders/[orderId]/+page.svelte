@@ -167,7 +167,7 @@
 					{#if prescription.pharmacistNotes}<div class="text-xs text-blue-600 mt-1">Notes: {prescription.pharmacistNotes}</div>{/if}
 					{#if prescription.rejectionReason}<div class="text-xs text-red-500 mt-1">Reason: {prescription.rejectionReason}</div>{/if}
 				</div>
-				<a href={prescription.fileUrl} target="_blank" class="text-sm text-purple-600 hover:text-purple-700 font-medium">View →</a>
+				<a href={`/api/prescriptions/${prescription.id}`} target="_blank" rel="noreferrer" class="text-sm text-purple-600 hover:text-purple-700 font-medium">View →</a>
 			</div>
 		</div>
 	{/if}

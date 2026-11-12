@@ -51,6 +51,22 @@ export const userSessions = pgTable(
 	(t) => [index('idx_sessions_user').on(t.userId)]
 );
 
+export const passwordResetTokens = pgTable('password_reset_tokens', {
+	id: uuid('id').defaultRandom().primaryKey(),
+	userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+	tokenHash: varchar('token_hash', { length: 64 }).notNull().unique(),
+	expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+	usedAt: timestamp('used_at', { withTimezone: true }),
+	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull()
+}, (t) => [index('idx_password_reset_user').on(t.userId)]);
+
+export const loginRateLimits = pgTable('login_rate_limits', {
+	key: varchar('key', { length: 64 }).primaryKey(),
+	attempts: integer('attempts').default(0).notNull(),
+	windowEndsAt: timestamp('window_ends_at', { withTimezone: true }).notNull(),
+	updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull()
+});
+
 export const customerProfiles = pgTable('customer_profiles', {
 	id: uuid('id').defaultRandom().primaryKey(),
 	userId: uuid('user_id')
@@ -383,7 +399,7 @@ export const paymentWebhooks = pgTable('payment_webhooks', {
 	signature: text('signature'),
 	processed: boolean('processed').default(false).notNull(),
 	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull()
-});
+}, (t) => [uniqueIndex('payment_webhooks_event_id_unique').on(t.eventId)]);
 
 export const deliveries = pgTable(
 	'deliveries',

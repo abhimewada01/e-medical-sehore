@@ -9,7 +9,7 @@ const adapter = process.env.VERCEL ? adapterAuto() : adapterNode();
 const config = {
 	preprocess: vitePreprocess(),
 	kit: {
-		adapter: adapter(),
+		adapter,
 		alias: {
 			$lib: './src/lib',
 			'$lib/*': './src/lib/*'

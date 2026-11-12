@@ -4,6 +4,7 @@ import { eq, desc, inArray } from 'drizzle-orm';
 import { fail } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { ORDER_STATUSES, isOrderStatus } from '$lib/server/orders';
+import { OrderWorkflowError, transitionAdminOrder } from '$lib/server/services/order-workflow';
 
 export const load: PageServerLoad = async ({ url }) => {
 	const status = url.searchParams.get('status') ?? '';
@@ -45,15 +46,17 @@ export const load: PageServerLoad = async ({ url }) => {
 };
 
 export const actions: Actions = {
-	updateStatus: async ({ request }) => {
+	updateStatus: async ({ request, locals }) => {
 		const data = Object.fromEntries(await request.formData());
 		const { orderId, status } = data;
 		if (!orderId || !status || !isOrderStatus(status as string)) {
 			return fail(400, { error: 'Invalid input' });
 		}
-		const updates: any = { status, updatedAt: new Date() };
-		if (status === 'DELIVERED' || status === 'PICKED_UP') updates.deliveredAt = new Date();
-		if (status === 'CANCELLED') updates.cancelledAt = new Date();
-		await db.update(orders).set(updates).where(eq(orders.id, orderId as string));
+		try {
+			await transitionAdminOrder(orderId as string, status as string, { id: locals.user!.id, role: locals.user!.role });
+		} catch (cause) {
+			if (cause instanceof OrderWorkflowError) return fail(400, { error: cause.message });
+			throw cause;
+		}
 	}
 };

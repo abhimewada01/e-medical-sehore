@@ -10,7 +10,9 @@ if (!connectionString) {
 }
 
 const client = postgres(connectionString, {
-	max: 10,
+	// Vercel may create many short-lived serverless instances; keep each one to a
+	// single connection so the combined pool stays within PostgreSQL limits.
+	max: process.env.VERCEL ? 1 : 10,
 	idle_timeout: 20,
 	connect_timeout: 10
 });

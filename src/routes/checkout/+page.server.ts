@@ -1,7 +1,7 @@
 import { redirect, fail } from '@sveltejs/kit';
 import { db } from '$lib/server/db';
 import { orders, orderItems, medicines, customerAddresses, loyaltyWallets, loyaltyTransactions, inventoryTransactions, notifications, adminSettings, doctors, doctorReferralEvents, prescriptions } from '$lib/server/db/schema';
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray, gte, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import type { Actions, PageServerLoad } from './$types';
 import { randomBytes } from 'crypto';
@@ -75,6 +75,7 @@ export const actions: Actions = {
 			discountedPrice: medicines.discountedPrice,
 			price: medicines.price,
 			stockQuantity: medicines.stockQuantity,
+			isActive: medicines.isActive,
 			requiresPrescription: medicines.requiresPrescription,
 			isAgeRestricted: medicines.isAgeRestricted
 		}).from(medicines).where(inArray(medicines.id, medicineIds));
@@ -84,12 +85,16 @@ export const actions: Actions = {
 		// Validate stock
 		for (const [id, item] of Object.entries(cartItems)) {
 			const med = medMap.get(id);
-			if (!med) return fail(400, { error: 'A medicine in your cart is no longer available' });
+			if (!med || !med.isActive) return fail(400, { error: 'A medicine in your cart is no longer available' });
 			if (med.stockQuantity < item.qty) return fail(400, { error: `Insufficient stock for ${med.name}` });
+			if (Number(med.discountedPrice) <= 0 || Number(med.discountedPrice) > Number(med.price)) {
+				return fail(400, { error: `The price for ${med.name} needs to be corrected by the pharmacy.` });
+			}
 		}
 
 		const hasRxItems = medsFromDb.some(m => m.requiresPrescription && cartItems[m.id]);
 		const hasAgeRestricted = medsFromDb.some(m => m.isAgeRestricted && cartItems[m.id]);
+		let selectedPrescriptionStatus: string | null = null;
 
 		if (hasRxItems) {
 			if (!prescriptionId) return fail(400, { error: 'Upload or select a prescription before placing this order.' });
@@ -102,6 +107,7 @@ export const actions: Actions = {
 				eq(prescriptions.customerId, locals.user.id)
 			)).limit(1);
 			if (!selectedPrescription) return fail(400, { error: 'That prescription was not found in your account.' });
+			selectedPrescriptionStatus = selectedPrescription.status;
 			if (selectedPrescription.status !== 'PENDING_VERIFICATION' && selectedPrescription.status !== 'APPROVED') {
 				return fail(400, { error: 'This prescription needs pharmacist approval before it can be used.' });
 			}
@@ -117,18 +123,13 @@ export const actions: Actions = {
 		const settingsMap: Record<string, string> = {};
 		settings.forEach(s => settingsMap[s.key] = s.value);
 
-		const coinValueRupees = parseFloat(settingsMap['coin_value_rupees'] ?? '0.1');
-		const maxCoinsPerOrder = parseInt(settingsMap['max_coins_per_order'] ?? '100');
-
+		const parsedCoinValue = Number(settingsMap['coin_value_rupees'] ?? '0.1');
+		const coinValueRupees = Number.isFinite(parsedCoinValue) && parsedCoinValue > 0 ? parsedCoinValue : 0.1;
+		const parsedCoinLimit = Number.parseInt(settingsMap['max_coins_redemption_per_order'] ?? settingsMap['max_coins_per_order'] ?? '50', 10);
+		const maxCoinsPerOrder = Number.isFinite(parsedCoinLimit) && parsedCoinLimit > 0 ? parsedCoinLimit : 50;
 		let coinsToRedeem = 0;
 		let loyaltyDiscount = 0;
-		if (redeemCoins > 0) {
-			const wallet = await db.select().from(loyaltyWallets).where(eq(loyaltyWallets.userId, locals.user.id)).then(r => r[0]);
-			if (wallet && wallet.balanceCoins >= redeemCoins) {
-				coinsToRedeem = Math.min(redeemCoins, maxCoinsPerOrder, wallet.balanceCoins);
-				loyaltyDiscount = coinsToRedeem * coinValueRupees;
-			}
-		}
+		let grandTotal = 0;
 
 		// Calculate totals
 		let totalMrp = 0;
@@ -142,17 +143,17 @@ export const actions: Actions = {
 		}
 		const subtotal = totalMrp - totalDiscount;
 		const deliveryFee = fulfillmentType === 'DELIVERY' && subtotal < 500 ? 40 : 0;
-		const grandTotal = Math.max(0, subtotal - loyaltyDiscount + deliveryFee);
+
 
 		// Determine initial order status
 		let status = 'PENDING';
 		if (hasRxItems) status = 'PRESCRIPTION_REQUIRED';
-		if (hasRxItems && prescriptionId) status = 'UNDER_VERIFICATION';
+		if (hasRxItems && prescriptionId) status = selectedPrescriptionStatus === 'APPROVED' ? 'APPROVED' : 'UNDER_VERIFICATION';
 
 		// Generate order number
 		const now = new Date();
 		const datePart = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
-		const randPart = Math.random().toString(36).substring(2, 6).toUpperCase();
+		const randPart = randomBytes(4).toString('hex').toUpperCase();
 		const orderNumber = `EMD-${datePart}-${randPart}`;
 
 		const addressSnapshot = address ? {
@@ -174,18 +175,24 @@ export const actions: Actions = {
 		const pickupToken = fulfillmentType === 'PICKUP' ? randomBytes(4).toString('hex').toUpperCase() : null;
 
 		// Use DB transaction
-		const newOrder = await db.transaction(async (tx) => {
+		let newOrder: typeof orders.$inferSelect;
+		try {
+		newOrder = await db.transaction(async (tx) => {
 			// Reserve inventory
 			for (const [id, item] of Object.entries(cartItems)) {
 				const med = medMap.get(id)!;
-				const newStock = med.stockQuantity - item.qty;
-				await tx.update(medicines).set({ stockQuantity: newStock, updatedAt: new Date() })
-					.where(eq(medicines.id, id));
+				const [reserved] = await tx.update(medicines)
+					.set({ stockQuantity: sql`${medicines.stockQuantity} - ${item.qty}`, updatedAt: new Date() })
+					.where(and(eq(medicines.id, id), eq(medicines.isActive, true), gte(medicines.stockQuantity, item.qty)))
+					.returning({ stockQuantity: medicines.stockQuantity });
+				if (!reserved) throw new Error(`CHECKOUT_STOCK:${med.name}`);
+				const newStock = reserved.stockQuantity;
+				const previousStock = newStock + item.qty;
 				await tx.insert(inventoryTransactions).values({
 					medicineId: id,
 					type: 'ORDER_RESERVED',
 					quantityChange: -item.qty,
-					previousQuantity: med.stockQuantity,
+					previousQuantity: previousStock,
 					newQuantity: newStock,
 					referenceType: 'ORDER',
 					referenceId: orderNumber,
@@ -193,27 +200,32 @@ export const actions: Actions = {
 				});
 			}
 
-			// Deduct loyalty coins if redeeming
-			if (coinsToRedeem > 0) {
+			// Lock the wallet and calculate the discount from its current balance.
+			if (redeemCoins > 0) {
 				const wallet = await tx.select().from(loyaltyWallets)
 					.where(eq(loyaltyWallets.userId, locals.user!.id)).for('update').then(r => r[0]);
-				if (wallet && wallet.balanceCoins >= coinsToRedeem) {
-					await tx.update(loyaltyWallets).set({
-						balanceCoins: wallet.balanceCoins - coinsToRedeem,
-						totalRedeemedCoins: wallet.totalRedeemedCoins + coinsToRedeem,
-						updatedAt: new Date()
-					}).where(eq(loyaltyWallets.id, wallet.id));
+				if (wallet) {
+					coinsToRedeem = Math.min(redeemCoins, maxCoinsPerOrder, wallet.balanceCoins, Math.floor(subtotal / coinValueRupees));
+					loyaltyDiscount = coinsToRedeem * coinValueRupees;
+					if (coinsToRedeem > 0) {
+						await tx.update(loyaltyWallets).set({
+							balanceCoins: wallet.balanceCoins - coinsToRedeem,
+							totalRedeemedCoins: wallet.totalRedeemedCoins + coinsToRedeem,
+							updatedAt: new Date()
+						}).where(eq(loyaltyWallets.id, wallet.id));
 
-					await tx.insert(loyaltyTransactions).values({
-						walletId: wallet.id,
-						type: 'DEBIT_REDEMPTION',
-						coins: -coinsToRedeem,
-						previousBalance: wallet.balanceCoins,
-						newBalance: wallet.balanceCoins - coinsToRedeem,
-						referenceNote: `Redeemed ${coinsToRedeem} coins for order ${orderNumber}`
-					});
+						await tx.insert(loyaltyTransactions).values({
+							walletId: wallet.id,
+							type: 'DEBIT_REDEMPTION',
+							coins: -coinsToRedeem,
+							previousBalance: wallet.balanceCoins,
+							newBalance: wallet.balanceCoins - coinsToRedeem,
+							referenceNote: `Redeemed ${coinsToRedeem} coins for order ${orderNumber}`
+						});
+					}
 				}
 			}
+			grandTotal = Math.max(0, subtotal - loyaltyDiscount + deliveryFee);
 
 			// Create order
 			const [order] = await tx.insert(orders).values({
@@ -275,6 +287,11 @@ export const actions: Actions = {
 
 			return order;
 		});
+		} catch (cause) {
+			const message = cause instanceof Error ? cause.message : '';
+			if (message.startsWith('CHECKOUT_STOCK:')) return fail(409, { error: `Stock changed while ordering ${message.slice('CHECKOUT_STOCK:'.length)}. Please refresh your cart.` });
+			throw cause;
+		}
 		if (referringDoctor) cookies.delete('referral_code', { path: '/' });
 
 		redirect(302, `/customer/orders/${newOrder.id}?placed=1`);

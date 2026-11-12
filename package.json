@@ -12,7 +12,7 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push",
-    "db:seed": "node --loader ts-node/esm src/lib/server/db/seed.ts",
+    "db:seed": "pnpm dlx tsx src/lib/server/db/seed.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test"

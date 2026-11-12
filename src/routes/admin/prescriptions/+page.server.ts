@@ -1,14 +1,14 @@
 import { db } from '$lib/server/db';
-import { prescriptions, users, orders } from '$lib/server/db/schema';
-import { eq, desc } from 'drizzle-orm';
+import { prescriptions, users, orders, auditLogs } from '$lib/server/db/schema';
+import { and, eq, desc } from 'drizzle-orm';
 import { fail } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
+import { OrderWorkflowError, releaseOrderReservation } from '$lib/server/services/order-workflow';
 
 export const load: PageServerLoad = async () => {
 	const rxList = await db.select({
 		id: prescriptions.id,
 		customerId: prescriptions.customerId,
-		fileUrl: prescriptions.fileUrl,
 		originalFilename: prescriptions.originalFilename,
 		mimeType: prescriptions.mimeType,
 		status: prescriptions.status,
@@ -41,23 +41,43 @@ export const actions: Actions = {
 		const data = Object.fromEntries(await request.formData());
 		const { prescriptionId, action, notes } = data;
 		if (!prescriptionId || !action) return fail(400, { error: 'Missing fields' });
-
+		if (!['approve', 'reject', 'clarify'].includes(action as string)) return fail(400, { error: 'Invalid review action' });
 		const newStatus = action === 'approve' ? 'APPROVED' : action === 'reject' ? 'REJECTED' : 'CLARIFICATION_REQUESTED';
-		await db.update(prescriptions).set({
-			status: newStatus,
-			verifiedBy: locals.user!.id,
-			verifiedAt: new Date(),
-			pharmacistNotes: notes as string || null,
-			rejectionReason: action === 'reject' ? (notes as string || 'Rejected by pharmacist') : null,
-			updatedAt: new Date()
-		}).where(eq(prescriptions.id, prescriptionId as string));
+		const cleanNotes = typeof notes === 'string' ? notes.trim().slice(0, 2000) : '';
+		try {
+			await db.transaction(async (tx) => {
+				const [rx] = await tx.select().from(prescriptions).where(eq(prescriptions.id, prescriptionId as string)).limit(1).for('update');
+				if (!rx) throw new OrderWorkflowError('Prescription not found');
+				if (rx.status !== 'PENDING_VERIFICATION' && rx.status !== 'CLARIFICATION_REQUESTED') throw new OrderWorkflowError('This prescription has already been reviewed');
+				const now = new Date();
+				await tx.update(prescriptions).set({
+					status: newStatus,
+					verifiedBy: locals.user!.id,
+					verifiedAt: now,
+					pharmacistNotes: cleanNotes || null,
+					rejectionReason: action === 'reject' ? cleanNotes || 'Rejected by pharmacist' : null,
+					updatedAt: now
+				}).where(eq(prescriptions.id, rx.id));
 
-		// If linked to an order, update order status
-		const [rx] = await db.select().from(prescriptions).where(eq(prescriptions.id, prescriptionId as string));
-		if (rx?.orderId) {
-			const orderStatus = action === 'approve' ? 'APPROVED' : action === 'reject' ? 'REJECTED' : 'UNDER_VERIFICATION';
-			await db.update(orders).set({ status: orderStatus, updatedAt: new Date() })
-				.where(eq(orders.id, rx.orderId));
+				if (rx.orderId && action === 'reject') {
+					await releaseOrderReservation(tx, rx.orderId, 'RX_REJECTED', 'REJECTED');
+				} else if (rx.orderId && action === 'approve') {
+					await tx.update(orders).set({ status: 'APPROVED', updatedAt: now })
+						.where(and(eq(orders.id, rx.orderId), eq(orders.status, 'UNDER_VERIFICATION')));
+				}
+				await tx.insert(auditLogs).values({
+					actorId: locals.user!.id,
+					actorRole: locals.user!.role,
+					action: `PRESCRIPTION_${newStatus}`,
+					entityType: 'PRESCRIPTION',
+					entityId: rx.id,
+					details: { orderId: rx.orderId, notes: cleanNotes || null }
+				});
+			});
+		} catch (cause) {
+			if (cause instanceof OrderWorkflowError) return fail(400, { error: cause.message });
+			throw cause;
 		}
+		return { success: true };
 	}
 };

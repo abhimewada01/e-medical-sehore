@@ -100,7 +100,7 @@
 					<button onclick={() => copyId(rx.id)} class="text-xs text-gray-500 hover:text-purple-600 border border-gray-200 px-2.5 py-1.5 rounded-lg flex items-center gap-1 hover:border-purple-300 transition-colors">
 						<Copy size={12} /> {copied === rx.id ? 'Copied!' : 'Copy ID'}
 					</button>
-					<a href={rx.fileUrl} target="_blank" class="text-xs text-purple-600 hover:text-purple-700 border border-purple-200 px-2.5 py-1.5 rounded-lg flex items-center gap-1 hover:bg-purple-50 transition-colors">
+					<a href={`/api/prescriptions/${rx.id}`} target="_blank" rel="noreferrer" class="text-xs text-purple-600 hover:text-purple-700 border border-purple-200 px-2.5 py-1.5 rounded-lg flex items-center gap-1 hover:bg-purple-50 transition-colors">
 						<Eye size={12} /> View
 					</a>
 				</div>

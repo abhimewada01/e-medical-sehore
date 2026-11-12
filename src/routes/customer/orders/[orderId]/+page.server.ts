@@ -15,7 +15,13 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 
 	let prescription = null;
 	if (order.prescriptionId) {
-		const rows = await db.select().from(prescriptions).where(eq(prescriptions.id, order.prescriptionId));
+		const rows = await db.select({
+			id: prescriptions.id,
+			originalFilename: prescriptions.originalFilename,
+			status: prescriptions.status,
+			pharmacistNotes: prescriptions.pharmacistNotes,
+			rejectionReason: prescriptions.rejectionReason
+		}).from(prescriptions).where(eq(prescriptions.id, order.prescriptionId));
 		prescription = rows[0] ?? null;
 	}
 

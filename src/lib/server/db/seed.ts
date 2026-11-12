@@ -20,28 +20,31 @@ const ADMIN_PASSWORD = process.env.SEED_ADMIN_PASSWORD;
 if (!DATABASE_URL || !ADMIN_EMAIL || !ADMIN_PASSWORD) {
 	throw new Error('DATABASE_URL, SEED_ADMIN_EMAIL, and SEED_ADMIN_PASSWORD must be configured.');
 }
+const databaseUrl = DATABASE_URL;
+const adminEmail = ADMIN_EMAIL;
+const adminPassword = ADMIN_PASSWORD;
 
 async function seed() {
-	const client = postgres(DATABASE_URL);
+	const client = postgres(databaseUrl);
 	const db = drizzle(client, { schema });
 
 	console.log('🌱 Seeding database...');
 
 	// 1. Admin user
-	const existingAdmin = await db.select().from(schema.users).where(eq(schema.users.email, ADMIN_EMAIL));
+	const existingAdmin = await db.select().from(schema.users).where(eq(schema.users.email, adminEmail));
 	if (existingAdmin.length === 0) {
 		const [admin] = await db.insert(schema.users).values({
 			fullName: 'Pharmacy Admin',
-			email: ADMIN_EMAIL,
-			passwordHash: await hashPassword(ADMIN_PASSWORD),
+			email: adminEmail,
+			passwordHash: await hashPassword(adminPassword),
 			role: 'SUPER_ADMIN',
 			isEmailVerified: true,
 			ageVerified: true,
 			isActive: true
 		}).returning();
-		console.log(`✅ Admin created: ${ADMIN_EMAIL}`);
+		console.log(`✅ Admin created: ${adminEmail}`);
 	} else {
-		console.log(`⚠️  Admin already exists: ${ADMIN_EMAIL}`);
+		console.log(`⚠️  Admin already exists: ${adminEmail}`);
 	}
 
 	// 2. Medicine categories

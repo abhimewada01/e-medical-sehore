@@ -2,15 +2,19 @@ import { fail, redirect } from '@sveltejs/kit';
 import { dev } from '$app/environment';
 import type { Actions, PageServerLoad } from './$types';
 import { db } from '$lib/server/db';
-import { users } from '$lib/server/db/schema';
-import { eq } from 'drizzle-orm';
+import { loginRateLimits, users } from '$lib/server/db/schema';
+import { and, eq, gt, sql } from 'drizzle-orm';
+import { createHmac } from 'crypto';
 import { hashPassword, verifyPassword } from '$lib/server/auth/password';
 import { createSession } from '$lib/server/auth/session';
 import { loginSchema } from '$lib/server/validation/auth';
 
-const attemptsByIp = new Map<string, { count: number; windowEndsAt: number }>();
 const MAX_LOGIN_ATTEMPTS = 10;
 const LOGIN_WINDOW_MS = 15 * 60 * 1000;
+
+function loginLimitKey(ip: string) {
+	return createHmac('sha256', process.env.JWT_SECRET ?? 'local-rate-limit-key').update(ip).digest('hex');
+}
 
 function safeReturnPath(url: URL) {
 	const value = url.searchParams.get('redirect');
@@ -45,28 +49,32 @@ export const actions: Actions = {
 
 		const { email, password } = result.data;
 		const ip = getClientAddress();
-		const now = Date.now();
-		const currentAttempts = attemptsByIp.get(ip);
-		if (currentAttempts && currentAttempts.windowEndsAt > now && currentAttempts.count >= MAX_LOGIN_ATTEMPTS) {
+		const now = new Date();
+		const key = loginLimitKey(ip);
+		const [currentAttempts] = await db.select().from(loginRateLimits).where(eq(loginRateLimits.key, key)).limit(1);
+		if (currentAttempts && currentAttempts.windowEndsAt > now && currentAttempts.attempts >= MAX_LOGIN_ATTEMPTS) {
 			return fail(429, { error: 'Too many sign-in attempts. Please wait and try again.', email });
 		}
-		if (!currentAttempts || currentAttempts.windowEndsAt <= now) {
-			if (attemptsByIp.size > 10000) {
-				for (const [key, value] of attemptsByIp) {
-					if (value.windowEndsAt <= now) attemptsByIp.delete(key);
-				}
-			}
-			attemptsByIp.set(ip, { count: 0, windowEndsAt: now + LOGIN_WINDOW_MS });
+		if (currentAttempts && currentAttempts.windowEndsAt <= now) {
+			await db.delete(loginRateLimits).where(eq(loginRateLimits.key, key));
 		}
 
 		const [user] = await db.select().from(users).where(eq(users.email, email.toLowerCase())).limit(1);
 		const valid = !!user?.isActive && !!user.passwordHash && await verifyPassword(password, user.passwordHash);
 		if (!valid || !user) {
-			const attempt = attemptsByIp.get(ip)!;
-			attempt.count += 1;
+			const windowEndsAt = new Date(now.getTime() + LOGIN_WINDOW_MS);
+			await db.insert(loginRateLimits).values({ key, attempts: 1, windowEndsAt, updatedAt: now })
+				.onConflictDoUpdate({
+					target: loginRateLimits.key,
+					set: {
+						attempts: sql`CASE WHEN ${loginRateLimits.windowEndsAt} <= ${now} THEN 1 ELSE ${loginRateLimits.attempts} + 1 END`,
+						windowEndsAt: sql`CASE WHEN ${loginRateLimits.windowEndsAt} <= ${now} THEN ${windowEndsAt} ELSE ${loginRateLimits.windowEndsAt} END`,
+						updatedAt: now
+					}
+				});
 			return fail(400, { error: 'Invalid email or password', email });
 		}
-		attemptsByIp.delete(ip);
+		await db.delete(loginRateLimits).where(eq(loginRateLimits.key, key));
 		if (user.passwordHash?.startsWith('sha256:')) {
 			await db.update(users).set({ passwordHash: await hashPassword(password), updatedAt: new Date() })
 				.where(eq(users.id, user.id));

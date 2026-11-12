@@ -79,7 +79,7 @@
 							<div class="text-sm font-medium text-gray-800">{prescription.originalFilename}</div>
 							<div class="text-xs text-gray-500">Status: <span class="font-semibold">{prescription.status}</span></div>
 						</div>
-						<a href={prescription.fileUrl} target="_blank" class="text-xs bg-purple-50 text-purple-700 border border-purple-200 px-3 py-1.5 rounded-lg hover:bg-purple-100 font-medium">
+						<a href={`/api/prescriptions/${prescription.id}`} target="_blank" rel="noreferrer" class="text-xs bg-purple-50 text-purple-700 border border-purple-200 px-3 py-1.5 rounded-lg hover:bg-purple-100 font-medium">
 							View Prescription
 						</a>
 					</div>

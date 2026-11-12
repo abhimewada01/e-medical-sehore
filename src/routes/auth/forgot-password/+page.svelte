@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { ActionData } from './$types';
+	import { enhance } from '$app/forms';
 	import { Pill, ArrowLeft } from 'lucide-svelte';
 
 	let { form }: { form: ActionData } = $props();
@@ -23,10 +24,15 @@
 		</div>
 
 		<div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-8">
-			<div class="rounded-xl border border-blue-100 bg-blue-50 p-4 text-sm leading-6 text-blue-900">
-				Password reset emails are not enabled for this site yet. For account security, please contact the pharmacy administrator to reset your password.
-			</div>
-			{#if form?.error}<div class="mt-4 p-3 bg-amber-50 border border-amber-200 text-amber-800 rounded-xl text-sm">{form.error}</div>{/if}
+			{#if form?.success}
+				<div role="status" class="rounded-xl border border-green-200 bg-green-50 p-4 text-sm leading-6 text-green-800">{form.success}</div>
+			{:else}
+				{#if form?.error}<div role="alert" class="mb-4 p-3 bg-amber-50 border border-amber-200 text-amber-800 rounded-xl text-sm">{form.error}</div>{/if}
+				<form method="POST" use:enhance class="space-y-4">
+					<label class="block text-left text-sm font-medium text-gray-700">Email address<input type="email" name="email" autocomplete="email" required class="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2.5" placeholder="you@example.com"/></label>
+					<button class="w-full rounded-xl bg-purple-600 py-3 font-semibold text-white hover:bg-purple-700">Send reset link</button>
+				</form>
+			{/if}
 
 			<div class="mt-6 text-center">
 				<a href="/auth/login" class="text-sm text-gray-500 hover:text-purple-600 flex items-center justify-center gap-1">

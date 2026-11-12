@@ -1,7 +1,7 @@
 import { json, error } from '@sveltejs/kit';
 import { db } from '$lib/server/db';
 import { notifications } from '$lib/server/db/schema';
-import { eq, desc } from 'drizzle-orm';
+import { and, eq, desc } from 'drizzle-orm';
 import type { RequestHandler } from './$types';
 
 export const GET: RequestHandler = async ({ locals }) => {
@@ -18,7 +18,7 @@ export const PATCH: RequestHandler = async ({ request, locals }) => {
 	const { id } = await request.json();
 	if (id) {
 		await db.update(notifications).set({ isRead: true })
-			.where(eq(notifications.id, id));
+			.where(and(eq(notifications.id, id), eq(notifications.userId, locals.user.id)));
 	} else {
 		// Mark all as read
 		await db.update(notifications).set({ isRead: true })

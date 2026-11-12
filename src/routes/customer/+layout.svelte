@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { Package, FileText, Wallet, User, ChevronRight, LogOut } from 'lucide-svelte';
+	import { Package, FileText, Wallet, User, LogOut, ShieldCheck } from 'lucide-svelte';
 	import type { LayoutData } from './$types';
 
 	let { data, children }: {  data: LayoutData; children: import("svelte").Snippet  } = $props();
@@ -8,6 +8,7 @@
 		{ href: '/customer/dashboard', icon: User, label: 'Dashboard' },
 		{ href: '/customer/orders', icon: Package, label: 'My Orders' },
 		{ href: '/customer/prescriptions', icon: FileText, label: 'Prescriptions' },
+		{ href: '/customer/verify-age', icon: ShieldCheck, label: 'Age eligibility' },
 		{ href: '/customer/wallet', icon: Wallet, label: 'Reward Wallet' }
 	];
 </script>
