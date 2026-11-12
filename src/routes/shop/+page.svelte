@@ -1,8 +1,7 @@
 <script lang="ts">
 	import type { PageData } from './$types';
 	import { goto } from '$app/navigation';
-	import { page } from '$app/stores';
-	import { ShoppingCart, Filter, Search, ChevronRight } from 'lucide-svelte';
+	import { ShoppingCart, Search } from 'lucide-svelte';
 
 	let { data }: {  data: PageData  } = $props();
 
@@ -26,18 +25,10 @@
 
 	function handleSearch(e: SubmitEvent) {
 		e.preventDefault();
-		const params = new URLSearchParams($page.url.searchParams);
-		if (searchQ) params.set('q', searchQ); else params.delete('q');
-		params.set('page', '1');
-		goto(`/shop?${params.toString()}`);
+		const query = searchQ.trim();
+		goto(query ? `/shop?q=${encodeURIComponent(query)}` : '/shop');
 	}
 
-	function setFilter(key: string, value: string) {
-		const params = new URLSearchParams($page.url.searchParams);
-		if (value) params.set(key, value); else params.delete(key);
-		params.set('page', '1');
-		goto(`/shop?${params.toString()}`);
-	}
 </script>
 
 <svelte:head>
@@ -45,9 +36,9 @@
 </svelte:head>
 
 <div class="max-w-7xl mx-auto px-4 py-8">
-	<!-- Search & Filters -->
+	<!-- Simple medicine search -->
 	<div class="bg-white rounded-2xl border border-gray-100 p-4 mb-6">
-		<form onsubmit={handleSearch} class="flex gap-3 mb-4">
+		<form onsubmit={handleSearch} class="flex gap-3">
 			<div class="flex-1 relative">
 				<Search size={18} class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
 				<input
@@ -61,43 +52,6 @@
 				Search
 			</button>
 		</form>
-
-		<div class="flex flex-wrap gap-3">
-			<!-- Category filter -->
-			<select
-				value={data.category}
-				onchange={(e) => setFilter('category', (e.target as HTMLSelectElement).value)}
-				class="text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-purple-500"
-			>
-				<option value="">All Categories</option>
-				{#each data.categories as cat}
-					<option value={cat.slug}>{cat.name}</option>
-				{/each}
-			</select>
-
-			<!-- Prescription filter -->
-			<select
-				value={data.prescription}
-				onchange={(e) => setFilter('prescription', (e.target as HTMLSelectElement).value)}
-				class="text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-purple-500"
-			>
-				<option value="">All</option>
-				<option value="no">OTC (No Rx)</option>
-				<option value="yes">Prescription Required</option>
-			</select>
-
-			<!-- Sort -->
-			<select
-				value={data.sortBy}
-				onchange={(e) => setFilter('sort', (e.target as HTMLSelectElement).value)}
-				class="text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-purple-500"
-			>
-				<option value="newest">Newest First</option>
-				<option value="price_asc">Price: Low to High</option>
-				<option value="price_desc">Price: High to Low</option>
-				<option value="name">Name A-Z</option>
-			</select>
-		</div>
 	</div>
 
 	<!-- Results header -->
