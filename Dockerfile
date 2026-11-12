@@ -2,11 +2,11 @@
 FROM node:20-alpine AS builder
 WORKDIR /app
 
-# Install pnpm
-RUN npm install -g pnpm@latest
+# Keep the package manager aligned with the pnpm v10 lockfile and workspace settings.
+RUN npm install -g pnpm@10.28.0
 
-# Copy package files
-COPY package.json pnpm-lock.yaml ./
+# Copy pnpm workspace build approvals before installing dependencies.
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 RUN pnpm install --frozen-lockfile
 
 # Copy source

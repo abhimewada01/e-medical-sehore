@@ -32,7 +32,11 @@
 
 	{#if form?.success}
 		<div class="mb-5 p-4 bg-green-50 border border-green-200 rounded-xl text-green-700 text-sm">
-			✅ Prescription uploaded successfully! Your Prescription ID is:
+			✅ Prescription uploaded successfully and sent to the pharmacy team for review. Add the medicines you need to your cart, then select this slip at checkout.
+			<div class="mt-3">
+				<a href="/shop" class="inline-flex rounded-lg bg-green-700 px-4 py-2 text-sm font-semibold text-white hover:bg-green-800">Browse medicines</a>
+			</div>
+			<p class="mt-3 text-xs text-green-700">Prescription reference ID:</p>
 			<div class="mt-2 flex items-center gap-2">
 				<code class="bg-green-100 px-3 py-1.5 rounded-lg font-mono text-sm break-all">{form.prescriptionId}</code>
 				<button onclick={() => copyId(form.prescriptionId)} class="text-xs text-green-700 hover:text-green-800 border border-green-300 px-2 py-1 rounded-lg flex items-center gap-1">

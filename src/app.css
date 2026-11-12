@@ -2,12 +2,12 @@
 
 @layer base {
 	:root {
-		/* 60/30/10 palette: lavender canvas / white surfaces / purple actions */
-		--color-brand-primary: #f5f3ff;
-		--color-brand-dark: #4c1d95;
-		--color-brand-light: #f5f3ff;
+		/* Pharmacy storefront palette */
+		--color-brand-primary: #f5f8f5;
+		--color-brand-dark: #145b49;
+		--color-brand-light: #edf6ef;
 		--color-brand-secondary: #ffffff;
-		--color-brand-accent: #7c3aed;
+		--color-brand-accent: #087e67;
 	}
 
 	html {
@@ -16,7 +16,7 @@
 
 	body {
 		font-feature-settings: "cv02", "cv03", "cv04", "cv11";
-		background-color: #f5f3ff;
+		background-color: #f6f8f6;
 	}
 }
 

@@ -119,7 +119,8 @@
 	{:else}
 		<div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
 			{#each data.medicines as med}
-				<a href="/shop/{med.id}" class="bg-white rounded-2xl border border-gray-100 hover:shadow-md hover:border-purple-200 transition-all overflow-hidden group">
+				<div class="medicine-list-card bg-white rounded-2xl border border-gray-100 hover:shadow-md hover:border-purple-200 transition-all overflow-hidden group">
+					<a href="/shop/{med.id}" class="block text-inherit no-underline">
 					<div class="aspect-square bg-gradient-to-br from-purple-50 to-indigo-50 flex items-center justify-center p-3">
 						{#if med.imageUrl}
 							<img src={med.imageUrl} alt={med.name} class="w-full h-full object-contain rounded-lg" />
@@ -133,9 +134,10 @@
 						{#if med.strength}
 							<div class="text-xs text-gray-400 mb-1">{med.strength}</div>
 						{/if}
-						{#if med.packSize}
-							<div class="text-xs text-gray-400 mb-2">{med.packSize}</div>
-						{/if}
+						{#if med.packSize}<div class="text-xs text-gray-400 mb-2">{med.packSize}</div>{/if}
+					</div>
+					</a>
+					<div class="px-3 pb-3">
 						<div class="flex items-center gap-1 mb-2">
 							<span class="text-purple-700 font-bold text-sm">₹{Number(med.discountedPrice).toFixed(2)}</span>
 							{#if Number(med.price) > Number(med.discountedPrice)}
@@ -148,17 +150,17 @@
 							{:else if med.stockQuantity === 0}
 								<span class="text-xs text-red-500 font-medium">Out of Stock</span>
 							{:else}
-								<button
+								<button type="button"
 									onclick={(e) => addToCart(med.id, e)}
 									class="w-full text-xs bg-purple-600 text-white py-1.5 rounded-lg hover:bg-purple-700 transition-colors flex items-center justify-center gap-1"
 								>
 									<ShoppingCart size={12} />
-									Add to Cart
+									{cartItems[med.id] ? `Add more · ${cartItems[med.id]}` : 'Add to Cart'}
 								</button>
 							{/if}
 						</div>
 					</div>
-				</a>
+				</div>
 			{/each}
 		</div>
 

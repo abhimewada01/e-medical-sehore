@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { ActionData } from './$types';
 	import { enhance } from '$app/forms';
+	import { page } from '$app/stores';
 	import { Pill, Eye, EyeOff, Loader } from 'lucide-svelte';
 
 	let { form }: { form: ActionData } = $props();
@@ -111,7 +112,7 @@
 
 			<p class="text-center text-sm text-gray-500 mt-6">
 				Don't have an account?
-				<a href="/auth/register" class="text-purple-600 font-medium hover:text-purple-700">Sign Up</a>
+				<a href={$page.url.searchParams.has('redirect') ? `/auth/register?redirect=${encodeURIComponent($page.url.searchParams.get('redirect') ?? '')}` : '/auth/register'} class="text-purple-600 font-medium hover:text-purple-700">Sign Up</a>
 			</p>
 		</div>
 	</div>

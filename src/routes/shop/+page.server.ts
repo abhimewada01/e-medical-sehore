@@ -13,7 +13,7 @@ const FALLBACK_CATEGORIES = [
 	{ id: '7', slug: 'wellness', name: 'Wellness' }
 ];
 
-const FALLBACK_MEDICINES = [
+export const _FALLBACK_MEDICINES = [
 	{ id: 'f1', name: 'Paracetamol 500mg', genericName: 'Paracetamol', brandName: 'Dolo 650', dosageForm: 'Tablet', strength: '500mg', packSize: '10 Tablets / Strip', price: '25.00', discountedPrice: '20.00', stockQuantity: 250, requiresPrescription: false, isAgeRestricted: false, imageUrl: null, manufacturer: 'Micro Labs' },
 	{ id: 'f2', name: 'Amoxicillin 500mg', genericName: 'Amoxicillin', brandName: 'Mox 500', dosageForm: 'Capsule', strength: '500mg', packSize: '10 Capsules / Strip', price: '95.00', discountedPrice: '85.00', stockQuantity: 120, requiresPrescription: true, isAgeRestricted: false, imageUrl: null, manufacturer: 'Ranbaxy' },
 	{ id: 'f3', name: 'Vitamin C 500mg Chewable', genericName: 'Ascorbic Acid', brandName: 'Limcee', dosageForm: 'Tablet', strength: '500mg', packSize: '30 Tablets / Bottle', price: '120.00', discountedPrice: '99.00', stockQuantity: 300, requiresPrescription: false, isAgeRestricted: false, imageUrl: null, manufacturer: 'Abbott India' },
@@ -79,13 +79,13 @@ export const load: PageServerLoad = async ({ url }) => {
 			.offset(offset);
 
 		return {
-			medicines: medsList.length > 0 ? medsList : (q || category || prescription ? [] : FALLBACK_MEDICINES),
+			medicines: medsList.length > 0 ? medsList : (q || category || prescription ? [] : _FALLBACK_MEDICINES),
 			categories: categories.length > 0 ? categories : FALLBACK_CATEGORIES,
 			q, category, prescription, sortBy, page
 		};
 	} catch (err) {
 		console.warn('Database query failed in shop load, using fallback data:', err);
-		let filtered = FALLBACK_MEDICINES;
+		let filtered = _FALLBACK_MEDICINES;
 		if (q) {
 			filtered = filtered.filter(m => m.name.toLowerCase().includes(q.toLowerCase()) || m.genericName.toLowerCase().includes(q.toLowerCase()));
 		}

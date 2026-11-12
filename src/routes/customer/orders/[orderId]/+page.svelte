@@ -57,6 +57,12 @@
 			✅ <span>Your order has been placed successfully! We'll notify you once it's confirmed.</span>
 		</div>
 	{/if}
+	{#if prescription && order.status === 'UNDER_VERIFICATION'}
+		<div class="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 mb-5 text-blue-800 text-sm">
+			<strong>Your prescription and order were sent to the pharmacy.</strong>
+			<p class="mt-1">A pharmacist will review the slip before the medicines are prepared. You can follow the review status below.</p>
+		</div>
+	{/if}
 
 	<!-- Status badge -->
 	<div class="bg-white rounded-2xl border border-gray-100 p-5 mb-4">

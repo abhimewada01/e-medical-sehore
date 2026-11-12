@@ -1,6 +1,6 @@
 import { db } from '$lib/server/db';
-import { prescriptions } from '$lib/server/db/schema';
-import { eq, desc } from 'drizzle-orm';
+import { prescriptions, users, notifications } from '$lib/server/db/schema';
+import { eq, desc, inArray } from 'drizzle-orm';
 import { fail } from '@sveltejs/kit';
 import { writeFile, mkdir } from 'fs/promises';
 import { join } from 'path';
@@ -75,6 +75,22 @@ export const actions: Actions = {
 			fileSize: file.size,
 			status: 'PENDING_VERIFICATION'
 		}).returning();
+
+		try {
+			const pharmacyStaff = await db.select({ id: users.id }).from(users)
+				.where(inArray(users.role, ['SUPER_ADMIN', 'PHARMACY_ADMIN', 'PHARMACIST']));
+			if (pharmacyStaff.length > 0) {
+				await db.insert(notifications).values(pharmacyStaff.map((staff) => ({
+					userId: staff.id,
+					title: 'New prescription to review',
+					message: `${locals.user!.fullName} uploaded a prescription for pharmacist review.`,
+					type: 'PRESCRIPTION',
+					link: '/admin/prescriptions'
+				})));
+			}
+		} catch (cause) {
+			console.warn('Could not notify pharmacy staff about the new prescription:', cause);
+		}
 
 		return { success: true, prescriptionId: rx.id };
 	}

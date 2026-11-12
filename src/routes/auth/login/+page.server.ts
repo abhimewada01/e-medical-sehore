@@ -12,8 +12,17 @@ const attemptsByIp = new Map<string, { count: number; windowEndsAt: number }>();
 const MAX_LOGIN_ATTEMPTS = 10;
 const LOGIN_WINDOW_MS = 15 * 60 * 1000;
 
-export const load: PageServerLoad = async ({ locals }) => {
+function safeReturnPath(url: URL) {
+	const value = url.searchParams.get('redirect');
+	if (!value || !value.startsWith('/') || value.startsWith('//')) return null;
+	const target = new URL(value, url.origin);
+	return target.origin === url.origin ? `${target.pathname}${target.search}${target.hash}` : null;
+}
+
+export const load: PageServerLoad = async ({ locals, url }) => {
 	if (locals.user) {
+		const returnPath = safeReturnPath(url);
+		if (returnPath && locals.user.role === 'CUSTOMER') redirect(302, returnPath);
 		const role = locals.user.role;
 		if (role === 'SUPER_ADMIN' || role === 'PHARMACY_ADMIN' || role === 'PHARMACIST') {
 			redirect(302, '/admin/dashboard');
@@ -27,7 +36,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 };
 
 export const actions: Actions = {
-	default: async ({ request, cookies, getClientAddress }) => {
+	default: async ({ request, cookies, getClientAddress, url }) => {
 		const data = Object.fromEntries(await request.formData());
 		const result = loginSchema.safeParse(data);
 		if (!result.success) {
@@ -78,6 +87,8 @@ export const actions: Actions = {
 		} else if (role === 'DOCTOR') {
 			redirect(302, '/doctor/dashboard');
 		} else {
+			const returnPath = safeReturnPath(url);
+			if (returnPath) redirect(302, returnPath);
 			redirect(302, '/customer/dashboard');
 		}
 	}

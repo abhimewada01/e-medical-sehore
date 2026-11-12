@@ -19,14 +19,14 @@
 				<span class="font-bold text-purple-700 text-lg">E-Medical Sehore</span>
 			</a>
 			<h1 class="text-2xl font-bold text-gray-800 mt-6 mb-1">Reset Password</h1>
-			<p class="text-gray-500 text-sm">Password recovery is handled by the pharmacy administrator for now.</p>
+			<p class="text-gray-500 text-sm">Secure account recovery</p>
 		</div>
 
 		<div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-8">
-			{#if form?.error}
-				<div class="mb-4 p-3 bg-amber-50 border border-amber-200 text-amber-800 rounded-xl text-sm">{form.error}</div>
-			{/if}
-			<p class="text-sm text-gray-600">No reset email service is connected, so this page will not claim a reset link was sent.</p>
+			<div class="rounded-xl border border-blue-100 bg-blue-50 p-4 text-sm leading-6 text-blue-900">
+				Password reset emails are not enabled for this site yet. For account security, please contact the pharmacy administrator to reset your password.
+			</div>
+			{#if form?.error}<div class="mt-4 p-3 bg-amber-50 border border-amber-200 text-amber-800 rounded-xl text-sm">{form.error}</div>{/if}
 
 			<div class="mt-6 text-center">
 				<a href="/auth/login" class="text-sm text-gray-500 hover:text-purple-600 flex items-center justify-center gap-1">

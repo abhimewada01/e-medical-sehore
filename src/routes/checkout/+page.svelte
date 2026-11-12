@@ -15,7 +15,11 @@
 	let fulfillmentType = $state<'DELIVERY' | 'PICKUP'>('DELIVERY');
 	let redeemCoins = $state(0);
 	let discreetPackaging = $state(false);
-	let prescriptionId = $state('');
+	let prescriptionId = $state(
+		data.prescriptions.find((rx) => rx.status === 'APPROVED' && !rx.orderId)?.id
+			?? data.prescriptions.find((rx) => rx.status === 'PENDING_VERIFICATION' && !rx.orderId)?.id
+			?? ''
+	);
 
 	onMount(() => {
 		const raw = localStorage.getItem('emedCart');
@@ -25,6 +29,7 @@
 
 	const items = $derived(Object.entries(cart).map(([id, i]) => ({ id, ...i })));
 	const hasRxItems = $derived(items.some(i => i.rx));
+	const hasSampleItems = $derived(items.some(i => !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(i.id)));
 	const subtotal = $derived(items.reduce((s, i) => s + i.price * i.qty, 0));
 	const deliveryFee = $derived(fulfillmentType === 'DELIVERY' && subtotal < 500 ? 40 : 0);
 	const coinValueRupees = 0.1;
@@ -62,6 +67,13 @@
 					{typeof form.error === 'string' ? form.error : JSON.stringify(form.error)}
 				</div>
 			{/if}
+			{#if hasSampleItems}
+				<div class="mb-4 p-4 bg-amber-50 border border-amber-200 rounded-xl text-amber-800 text-sm">
+					<strong>This sample medicine cannot be ordered yet.</strong>
+					<p class="mt-1">It is a preview listing and is not connected to live pharmacy stock. Remove it from your cart and choose an available medicine to continue.</p>
+					<a href="/cart" class="inline-block mt-2 font-semibold underline">Review your cart</a>
+				</div>
+			{/if}
 
 			<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
 				<div class="lg:col-span-2 space-y-5">
@@ -85,8 +97,11 @@
 					<div class="bg-white rounded-2xl border border-gray-100 p-5">
 						<h2 class="font-bold text-gray-800 mb-4 flex items-center gap-2"><MapPin size={18} class="text-purple-600" /> Delivery Address</h2>
 						{#if data.addresses.length === 0}
-							<div class="text-sm text-gray-500">
-								No saved addresses. <a href="/customer/profile/addresses/new" class="text-purple-600 hover:text-purple-700 font-medium">Add one</a>
+							<div class="rounded-xl border border-dashed border-gray-300 bg-gray-50 p-5 text-center">
+								<MapPin size={22} class="mx-auto mb-2 text-purple-600" />
+								<p class="font-semibold text-gray-800">Add a delivery address to continue</p>
+								<p class="mt-1 text-xs text-gray-500">Your order needs a saved address in Sehore.</p>
+								<a href="/customer/profile/addresses/new" class="inline-flex mt-3 rounded-lg bg-purple-600 px-4 py-2 text-sm font-semibold text-white hover:bg-purple-700">Add delivery address</a>
 							</div>
 						{:else}
 							<div class="space-y-3">
@@ -115,11 +130,19 @@
 					{#if hasRxItems}
 						<div class="bg-orange-50 border border-orange-200 rounded-2xl p-5">
 							<h2 class="font-bold text-orange-700 mb-2 flex items-center gap-2"><Upload size={18} /> Prescription Required</h2>
-							<p class="text-sm text-orange-600 mb-3">Your cart contains prescription medicines. Please go to <a href="/customer/prescriptions" class="underline font-medium">My Prescriptions</a> to upload a prescription first, then come back and enter the prescription ID below.</p>
-							<div>
-								<label for="prescriptionIdInput" class="block text-xs font-medium text-orange-700 mb-1">Prescription ID (after upload)</label>
-								<input id="prescriptionIdInput" type="text" name="prescriptionId" bind:value={prescriptionId} placeholder="paste prescription UUID here" class="w-full border border-orange-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-orange-500" />
-							</div>
+							<p class="text-sm text-orange-600 mb-3">Your cart contains prescription medicines. Select one of your uploaded slips below. It will be sent to the pharmacy team with this order for review.</p>
+							{#if data.prescriptions.some((rx) => !rx.orderId && (rx.status === 'PENDING_VERIFICATION' || rx.status === 'APPROVED'))}
+								<label for="prescriptionIdInput" class="block text-xs font-medium text-orange-700 mb-1">Your prescription</label>
+								<select id="prescriptionIdInput" name="prescriptionId" bind:value={prescriptionId} required class="w-full border border-orange-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-orange-500">
+									<option value="">Choose an uploaded slip</option>
+									{#each data.prescriptions.filter((rx) => !rx.orderId && (rx.status === 'PENDING_VERIFICATION' || rx.status === 'APPROVED')) as rx}
+										<option value={rx.id}>{rx.originalFilename} · {rx.status.replace(/_/g, ' ')} · {new Date(rx.createdAt).toLocaleDateString('en-IN')}</option>
+									{/each}
+								</select>
+								<p class="text-xs text-orange-600 mt-2">The medical team will review your prescription before dispensing these medicines.</p>
+							{:else}
+								<div class="rounded-xl bg-white/70 p-3 text-sm text-orange-800">No usable prescription is uploaded yet. <a href="/customer/prescriptions" class="font-semibold underline">Upload your slip</a>, then return here to place the order.</div>
+							{/if}
 						</div>
 					{/if}
 
@@ -196,7 +219,7 @@
 
 					<button
 						type="submit"
-						disabled={submitting || (fulfillmentType === 'DELIVERY' && !selectedAddressId)}
+						disabled={submitting || hasSampleItems || (hasRxItems && !prescriptionId) || (fulfillmentType === 'DELIVERY' && !selectedAddressId)}
 						class="w-full bg-purple-600 text-white py-3 rounded-xl font-semibold hover:bg-purple-700 transition-colors disabled:opacity-60 flex items-center justify-center gap-2 shadow-sm"
 					>
 						{#if submitting}

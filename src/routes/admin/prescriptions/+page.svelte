@@ -47,6 +47,11 @@
 							{#if rx.verifiedAt} · Verified: {new Date(rx.verifiedAt).toLocaleString('en-IN')}{/if}
 						</div>
 						<div class="text-xs text-gray-500 mt-1">File: {rx.originalFilename}</div>
+						{#if rx.orderId}
+							<a href="/admin/orders/{rx.orderId}" class="inline-flex mt-2 text-xs font-semibold text-purple-700 hover:underline">Open linked order →</a>
+						{:else}
+							<div class="text-xs text-gray-400 mt-1">No order has been placed with this slip yet.</div>
+						{/if}
 						{#if rx.pharmacistNotes}
 							<div class="text-xs text-blue-600 mt-1">Notes: {rx.pharmacistNotes}</div>
 						{/if}

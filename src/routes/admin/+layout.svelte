@@ -2,7 +2,7 @@
 	import type { LayoutData } from './$types';
 	import {
 		LayoutDashboard, Package, Pill, FileText, Users, Stethoscope, Coins,
-		Settings, LogOut, Menu, X, Bell
+		Settings, LogOut, Menu, X, Bell, CreditCard, Images, BarChart3
 	} from 'lucide-svelte';
 
 	let { data, children }: {  data: LayoutData; children: import("svelte").Snippet  } = $props();
@@ -13,6 +13,10 @@
 		{ href: '/admin/orders', icon: Package, label: 'Orders' },
 		{ href: '/admin/medicines', icon: Pill, label: 'Medicines' },
 		{ href: '/admin/prescriptions', icon: FileText, label: 'Prescriptions' },
+		{ href: '/admin/users', icon: Users, label: 'Users' },
+		{ href: '/admin/payments', icon: CreditCard, label: 'Payments' },
+		{ href: '/admin/content', icon: Images, label: 'Content library' },
+		{ href: '/admin/reports', icon: BarChart3, label: 'Reports' },
 		{ href: '/admin/doctors', icon: Stethoscope, label: 'Doctors' },
 		{ href: '/admin/rewards', icon: Coins, label: 'Rewards' },
 		{ href: '/admin/settings', icon: Settings, label: 'Settings' }
@@ -75,8 +79,9 @@
 	<div class="flex-1 md:ml-60 pt-0 md:pt-0">
 		<div class="hidden md:flex items-center justify-between bg-white border-b border-gray-100 px-6 py-3 sticky top-0 z-10">
 			<div class="text-sm text-gray-500">Welcome back, <span class="font-semibold text-gray-800">{data.user?.fullName}</span></div>
-			<a href="/admin/notifications" class="relative p-2 text-gray-400 hover:text-purple-600">
+			<a href="/admin/notifications" aria-label="Notifications" class="relative p-2 text-gray-400 hover:text-purple-600">
 				<Bell size={20} />
+				{#if data.unreadNotifications > 0}<span class="absolute -right-1 -top-1 min-w-5 h-5 rounded-full bg-red-500 px-1 text-center text-xs leading-5 text-white">{data.unreadNotifications > 99 ? '99+' : data.unreadNotifications}</span>{/if}
 			</a>
 		</div>
 		<div class="pt-14 md:pt-0">

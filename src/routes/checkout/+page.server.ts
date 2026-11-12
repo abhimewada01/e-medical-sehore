@@ -1,7 +1,7 @@
 import { redirect, fail } from '@sveltejs/kit';
 import { db } from '$lib/server/db';
-import { orders, orderItems, medicines, customerAddresses, loyaltyWallets, loyaltyTransactions, inventoryTransactions, notifications, adminSettings, doctors, doctorReferralEvents } from '$lib/server/db/schema';
-import { eq, inArray } from 'drizzle-orm';
+import { orders, orderItems, medicines, customerAddresses, loyaltyWallets, loyaltyTransactions, inventoryTransactions, notifications, adminSettings, doctors, doctorReferralEvents, prescriptions } from '$lib/server/db/schema';
+import { and, eq, inArray } from 'drizzle-orm';
 import { z } from 'zod';
 import type { Actions, PageServerLoad } from './$types';
 import { randomBytes } from 'crypto';
@@ -17,16 +17,23 @@ const checkoutSchema = z.object({
 });
 
 export const load: PageServerLoad = async ({ locals }) => {
-	if (!locals.user) redirect(302, '/auth/login');
+	if (!locals.user) redirect(302, '/auth/login?redirect=%2Fcheckout');
 
-	const [addresses, wallet] = await Promise.all([
+	const [addresses, wallet, customerPrescriptions] = await Promise.all([
 		db.select().from(customerAddresses).where(eq(customerAddresses.userId, locals.user.id)),
-		db.select().from(loyaltyWallets).where(eq(loyaltyWallets.userId, locals.user.id)).then(r => r[0] ?? null)
+		db.select().from(loyaltyWallets).where(eq(loyaltyWallets.userId, locals.user.id)).then(r => r[0] ?? null),
+		db.select({
+			id: prescriptions.id,
+			originalFilename: prescriptions.originalFilename,
+			status: prescriptions.status,
+			createdAt: prescriptions.createdAt,
+			orderId: prescriptions.orderId
+		}).from(prescriptions).where(eq(prescriptions.customerId, locals.user.id))
 	]);
 
 	const razorpayKeyId = process.env.RAZORPAY_KEY_ID ?? '';
 
-	return { addresses, wallet, razorpayKeyId };
+	return { addresses, wallet, prescriptions: customerPrescriptions, razorpayKeyId };
 };
 
 export const actions: Actions = {
@@ -84,8 +91,21 @@ export const actions: Actions = {
 		const hasRxItems = medsFromDb.some(m => m.requiresPrescription && cartItems[m.id]);
 		const hasAgeRestricted = medsFromDb.some(m => m.isAgeRestricted && cartItems[m.id]);
 
-		if (hasRxItems && !prescriptionId) {
-			return fail(400, { error: 'A prescription is required for one or more items in your cart. Please upload a prescription first.' });
+		if (hasRxItems) {
+			if (!prescriptionId) return fail(400, { error: 'Upload or select a prescription before placing this order.' });
+			const [selectedPrescription] = await db.select({
+				id: prescriptions.id,
+				status: prescriptions.status,
+				orderId: prescriptions.orderId
+			}).from(prescriptions).where(and(
+				eq(prescriptions.id, prescriptionId),
+				eq(prescriptions.customerId, locals.user.id)
+			)).limit(1);
+			if (!selectedPrescription) return fail(400, { error: 'That prescription was not found in your account.' });
+			if (selectedPrescription.status !== 'PENDING_VERIFICATION' && selectedPrescription.status !== 'APPROVED') {
+				return fail(400, { error: 'This prescription needs pharmacist approval before it can be used.' });
+			}
+			if (selectedPrescription.orderId) return fail(400, { error: 'This prescription is already attached to another order. Upload the slip again for a new order.' });
 		}
 
 		if (hasAgeRestricted && !locals.user.ageVerified) {
@@ -230,6 +250,10 @@ export const actions: Actions = {
 				requiresPrescription: medMap.get(id)?.requiresPrescription ?? false
 			}));
 			await tx.insert(orderItems).values(itemValues);
+			if (prescriptionId) {
+				await tx.update(prescriptions).set({ orderId: order.id, updatedAt: new Date() })
+					.where(and(eq(prescriptions.id, prescriptionId), eq(prescriptions.customerId, locals.user!.id)));
+			}
 
 			// Notify customer
 			await tx.insert(notifications).values({

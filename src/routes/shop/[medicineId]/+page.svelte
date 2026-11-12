@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { PageData } from './$types';
+	import { goto } from '$app/navigation';
 	import { ShoppingCart, AlertCircle, Package, Shield } from 'lucide-svelte';
 
 	let { data }: {  data: PageData  } = $props();
@@ -10,9 +11,12 @@
 
 	function addToCart() {
 		if (typeof window === 'undefined') return;
-		const cart: Record<string, { qty: number; name: string; price: number; rx: boolean; imageUrl?: string | null }> = JSON.parse(
-			localStorage.getItem('emedCart') || '{}'
-		);
+		let cart: Record<string, { qty: number; name: string; price: number; rx: boolean; imageUrl?: string | null }>;
+		try {
+			cart = JSON.parse(localStorage.getItem('emedCart') || '{}');
+		} catch {
+			cart = {};
+		}
 		if (cart[med.id]) {
 			cart[med.id].qty += qty;
 		} else {
@@ -22,6 +26,11 @@
 		window.dispatchEvent(new CustomEvent('cart-updated'));
 		added = true;
 		setTimeout(() => (added = false), 2000);
+	}
+
+	function buyNow() {
+		addToCart();
+		goto('/checkout');
 	}
 
 	const discount = $derived(
@@ -104,11 +113,11 @@
 				<!-- Quantity + Add to Cart -->
 				<div class="flex items-center gap-4 mb-4">
 					<div class="flex items-center border border-gray-200 rounded-xl overflow-hidden">
-						<button onclick={() => qty = Math.max(1, qty - 1)} class="px-3 py-2 hover:bg-gray-50 text-gray-600 font-bold">−</button>
+					<button type="button" aria-label="Decrease quantity" onclick={() => qty = Math.max(1, qty - 1)} class="px-3 py-2 hover:bg-gray-50 text-gray-600 font-bold">−</button>
 						<span class="px-4 py-2 font-semibold text-gray-800">{qty}</span>
-						<button onclick={() => qty = Math.min(med.stockQuantity, qty + 1)} class="px-3 py-2 hover:bg-gray-50 text-gray-600 font-bold">+</button>
+						<button type="button" aria-label="Increase quantity" onclick={() => qty = Math.min(med.stockQuantity, qty + 1)} class="px-3 py-2 hover:bg-gray-50 text-gray-600 font-bold">+</button>
 					</div>
-					<button
+					<button type="button"
 						onclick={addToCart}
 						class="flex-1 flex items-center justify-center gap-2 bg-purple-600 text-white py-3 rounded-xl font-semibold hover:bg-purple-700 transition-colors"
 					>
@@ -116,9 +125,9 @@
 						{added ? 'Added ✓' : 'Add to Cart'}
 					</button>
 				</div>
-				<a href="/cart" class="block w-full text-center border-2 border-purple-600 text-purple-700 py-3 rounded-xl font-semibold hover:bg-purple-50 transition-colors">
+				<button type="button" onclick={buyNow} class="block w-full text-center border-2 border-purple-600 text-purple-700 py-3 rounded-xl font-semibold hover:bg-purple-50 transition-colors">
 					Buy Now
-				</a>
+				</button>
 			{/if}
 		</div>
 	</div>

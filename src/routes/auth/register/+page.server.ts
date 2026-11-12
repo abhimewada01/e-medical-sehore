@@ -8,13 +8,20 @@ import { hashPassword } from '$lib/server/auth/password';
 import { createSession } from '$lib/server/auth/session';
 import { registerSchema } from '$lib/server/validation/auth';
 
+function safeReturnPath(url: URL) {
+	const value = url.searchParams.get('redirect');
+	if (!value || !value.startsWith('/') || value.startsWith('//')) return null;
+	const target = new URL(value, url.origin);
+	return target.origin === url.origin ? `${target.pathname}${target.search}${target.hash}` : null;
+}
+
 export const load: PageServerLoad = async ({ locals }) => {
 	if (locals.user) redirect(302, '/customer/dashboard');
 	return {};
 };
 
 export const actions: Actions = {
-	default: async ({ request, cookies, getClientAddress }) => {
+	default: async ({ request, cookies, getClientAddress, url }) => {
 		const data = Object.fromEntries(await request.formData());
 		const result = registerSchema.safeParse(data);
 		if (!result.success) {
@@ -74,6 +81,6 @@ export const actions: Actions = {
 			expires: expiresAt
 		});
 
-		redirect(302, '/customer/dashboard');
+		redirect(302, safeReturnPath(url) ?? '/customer/dashboard');
 	}
 };
