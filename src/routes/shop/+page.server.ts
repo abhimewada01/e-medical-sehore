@@ -25,7 +25,8 @@ export const _FALLBACK_MEDICINES = [
 ];
 
 export const load: PageServerLoad = async ({ url }) => {
-	const q = url.searchParams.get('q') ?? '';
+	const q = (url.searchParams.get('q') ?? '').trim().slice(0, 100);
+	const searchTerm = `%${q.replace(/[\\%_]/g, '\\$&')}%`;
 	const category = url.searchParams.get('category') ?? '';
 	const prescription = url.searchParams.get('prescription') ?? '';
 	const sortBy = url.searchParams.get('sort') ?? 'newest';
@@ -36,12 +37,32 @@ export const load: PageServerLoad = async ({ url }) => {
 	try {
 		const categories = await db.select().from(medicineCategories).where(eq(medicineCategories.isActive, true)).orderBy(medicineCategories.sortOrder);
 
-		const conditions: any[] = [eq(medicines.isActive, true)];
+		const conditions = [eq(medicines.isActive, true)];
 
-		if (q) {
+		let compositions: string[] = [];
+		if (q.trim()) {
 			conditions.push(
-				sql`(${medicines.name} ilike ${`%${q}%`} OR ${medicines.genericName} ilike ${`%${q}%`} OR ${medicines.brandName} ilike ${`%${q}%`} OR ${medicines.composition} ilike ${`%${q}%`})`
+				sql`(${medicines.name} ilike ${searchTerm} OR ${medicines.genericName} ilike ${searchTerm} OR ${medicines.brandName} ilike ${searchTerm} OR ${medicines.composition} ilike ${searchTerm})`
 			);
+			const matchingCompositionRows = await db.select({
+				composition: medicines.composition,
+				genericName: medicines.genericName,
+				strength: medicines.strength
+			}).from(medicines).where(and(
+				eq(medicines.isActive, true),
+				sql`(${medicines.composition} ilike ${searchTerm} OR ${medicines.genericName} ilike ${searchTerm})`
+			)).limit(100);
+			const distinctCompositions = new Map<string, string>();
+			for (const row of matchingCompositionRows) {
+				const candidates = [row.composition, row.genericName && [row.genericName, row.strength].filter(Boolean).join(' ')];
+				for (const candidate of candidates) {
+					for (const part of (candidate ?? '').split(/[,;\n]+/)) {
+						const label = part.trim().replace(/\s+/g, ' ');
+						if (label.length >= 2 && label.toLowerCase().includes(q.trim().toLowerCase())) distinctCompositions.set(label.toLowerCase(), label);
+					}
+				}
+			}
+			compositions = [...distinctCompositions.values()].slice(0, 20);
 		}
 		if (category) {
 			const cat = categories.find(c => c.slug === category);
@@ -81,7 +102,7 @@ export const load: PageServerLoad = async ({ url }) => {
 		return {
 			medicines: medsList.length > 0 ? medsList : (q || category || prescription ? [] : _FALLBACK_MEDICINES),
 			categories: categories.length > 0 ? categories : FALLBACK_CATEGORIES,
-			q, category, prescription, sortBy, page
+			q, category, prescription, sortBy, page, compositions
 		};
 	} catch (err) {
 		console.warn('Database query failed in shop load, using fallback data:', err);
@@ -95,7 +116,7 @@ export const load: PageServerLoad = async ({ url }) => {
 		return {
 			medicines: filtered,
 			categories: FALLBACK_CATEGORIES,
-			q, category, prescription, sortBy, page
+			q, category, prescription, sortBy, page, compositions: []
 		};
 	}
 };

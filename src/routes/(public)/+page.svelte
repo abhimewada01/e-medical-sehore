@@ -1,12 +1,20 @@
 <script lang="ts">
 	import type { PageData } from './$types';
 	import { onMount } from 'svelte';
+	import { goto } from '$app/navigation';
 	import { ArrowRight, BadgeCheck, ChevronLeft, ChevronRight, Clock3, Microscope, PackageCheck, Pill, ShieldCheck, Upload, Truck } from 'lucide-svelte';
 
 	let { data }: { data: PageData } = $props();
 	let activeSlide = $state(0);
 	let cartCount = $state(0);
 	let addedMedicine = $state<Record<string, boolean>>({});
+	type SearchProduct = { id: string; name: string; genericName: string | null; brandName: string | null; imageUrl: string | null; stockQuantity: number; discountedPrice: string; price: string; requiresPrescription: boolean; dosageForm: string };
+	let searchQuery = $state('');
+	let searchOpen = $state(false);
+	let searchLoading = $state(false);
+	let searchSuggestions = $state<{ products: SearchProduct[]; compositions: string[] }>({ products: [], compositions: [] });
+	let searchTimer: ReturnType<typeof setTimeout>;
+	let searchRequest: AbortController | undefined;
 
 	const slides = [
 		{ eyebrow: 'YOUR NEIGHBOURHOOD PHARMACY', title: 'Everyday health,\ncloser to home.', copy: 'Order genuine medicines and wellness essentials from your local Sehore pharmacy.', cta: 'Shop medicines', href: '/shop', tone: 'mint' },
@@ -49,6 +57,51 @@
 		activeSlide = (activeSlide + direction + slides.length) % slides.length;
 	}
 
+	function updateSearchSuggestions(value: string) {
+		searchQuery = value;
+		searchOpen = true;
+		clearTimeout(searchTimer);
+		searchRequest?.abort();
+		const query = value.trim();
+		if (query.length < 2) {
+			searchLoading = false;
+			searchSuggestions = { products: [], compositions: [] };
+			return;
+		}
+		searchLoading = true;
+		searchTimer = setTimeout(async () => {
+			const controller = new AbortController();
+			searchRequest = controller;
+			try {
+				const response = await fetch(`/api/medicines?q=${encodeURIComponent(query)}&limit=6`, { signal: controller.signal });
+				if (!response.ok) throw new Error('Search request failed');
+				searchSuggestions = await response.json();
+			} catch (cause) {
+				if (!(cause instanceof DOMException && cause.name === 'AbortError')) searchSuggestions = { products: [], compositions: [] };
+			} finally {
+				if (!controller.signal.aborted) searchLoading = false;
+			}
+		}, 220);
+	}
+
+	function submitSearch(query = searchQuery) {
+		const normalized = query.trim();
+		if (!normalized) return;
+		searchOpen = false;
+		goto(`/shop?q=${encodeURIComponent(normalized)}`);
+	}
+
+	function addSuggestedMedicine(med: SearchProduct) {
+		if (med.stockQuantity < 1) return;
+		let cart: Record<string, { qty: number; name: string; price: number; rx: boolean; imageUrl?: string | null }>;
+		try { cart = JSON.parse(localStorage.getItem('emedCart') || '{}'); } catch { cart = {}; }
+		if (cart[med.id]) cart[med.id].qty += 1;
+		else cart[med.id] = { qty: 1, name: med.name, price: Number(med.discountedPrice), rx: med.requiresPrescription, imageUrl: med.imageUrl };
+		localStorage.setItem('emedCart', JSON.stringify(cart));
+		cartCount = Object.values(cart).reduce((sum, item) => sum + item.qty, 0);
+		window.dispatchEvent(new CustomEvent('cart-updated', { detail: cart }));
+	}
+
 	onMount(() => {
 		const readCart = () => {
 			try { cartCount = Object.values(JSON.parse(localStorage.getItem('emedCart') || '{}')).reduce((sum: number, item: any) => sum + (item.qty || 0), 0); } catch { cartCount = 0; }
@@ -70,11 +123,40 @@
 	<section class="welcome-strip"><div class="welcome-inner"><span class="open-dot"></span><span>Serving Sehore & nearby areas</span><span class="strip-separator">·</span><span>Care that comes to you</span><a href="/about/doctors">Talk to our care team <ArrowRight size={14} /></a></div></section>
 
 	<section class="search-wrap" aria-label="Search medicines">
-		<form action="/shop" method="get" class="search-box">
+		<form action="/shop" method="get" class="search-box" onsubmit={() => searchOpen = false}>
 			<Pill size={20} class="search-pill" aria-hidden="true" />
-			<input type="search" name="q" placeholder="Search medicines, brands & more" aria-label="Search medicines, brands and products" />
+			<input type="search" name="q" value={searchQuery} oninput={(event) => updateSearchSuggestions(event.currentTarget.value)} onfocus={() => { if (searchQuery.trim().length >= 2) searchOpen = true; }} onkeydown={(event) => { if (event.key === 'Escape') searchOpen = false; }} placeholder="Search medicines, brands & more" aria-label="Search medicines, brands and products" aria-autocomplete="list" aria-expanded={searchOpen} aria-controls="medicine-search-suggestions" />
 			<button type="submit" aria-label="Search"><span>Search</span><ArrowRight size={17} /></button>
 		</form>
+		{#if searchOpen && searchQuery.trim().length >= 2}
+			<div id="medicine-search-suggestions" class="search-suggestions" role="region" aria-label="Search suggestions">
+				<div class="search-suggestion-heading">Searching for <button type="button" onclick={() => submitSearch()}>{searchQuery.trim()}</button></div>
+				<div class="suggestion-columns">
+					<section class="suggestion-products" aria-label="Suggested products">
+						<div class="suggestion-title">Suggested products <button type="button" onclick={() => submitSearch()}>View all</button></div>
+						{#if searchLoading}<p class="suggestion-empty">Searching medicines…</p>
+						{:else if searchSuggestions.products.length === 0}<p class="suggestion-empty">No matching products. Press Enter to search all.</p>
+						{:else}
+							{#each searchSuggestions.products as med (med.id)}
+								<div class="suggestion-product">
+									<a href="/shop/{med.id}" class="suggestion-product-link" onclick={() => searchOpen = false}>
+										{#if med.imageUrl}<img src={med.imageUrl} alt="" />{:else}<span class="suggestion-product-placeholder"><Pill size={18} /></span>{/if}
+										<span><strong>{med.name}</strong><small>{med.dosageForm}{med.genericName ? ` · ${med.genericName}` : ''}</small></span>
+									</a>
+									<div class="suggestion-product-action"><span>₹{Number(med.discountedPrice).toFixed(2)}</span><button type="button" disabled={med.stockQuantity < 1} onclick={() => addSuggestedMedicine(med)}>{med.stockQuantity < 1 ? 'Unavailable' : 'Add to cart'}</button></div>
+								</div>
+							{/each}
+						{/if}
+					</section>
+					<section class="suggestion-compositions" aria-label="Suggested compositions">
+						<div class="suggestion-title">Suggested compositions <button type="button" onclick={() => submitSearch()}>View all</button></div>
+						{#if searchSuggestions.compositions.length}
+							{#each searchSuggestions.compositions as composition (composition)}<button class="composition-suggestion" type="button" onclick={() => submitSearch(composition)}>{composition}</button>{/each}
+						{:else}<p class="suggestion-empty">{searchLoading ? 'Searching compositions…' : 'No matching compositions'}</p>{/if}
+					</section>
+				</div>
+			</div>
+		{/if}
 		<p class="search-hint"><ShieldCheck size={14} /> Genuine medicines from trusted distributors</p>
 	</section>
 
@@ -182,4 +264,6 @@
 	.quick-help-copy small{font-size:12px;color:#78837e}
 	.quick-help-arrow{color:#24342e;flex:none}
 	@media(max-width:760px){.shelf-grid{gap:12px;margin-right:-16px;padding-right:16px}.shelf-grid .medicine-card{flex-basis:42vw;min-width:165px;max-width:220px}.shelf-grid .medicine-image{height:155px}.shelf-grid .medicine-title h3{font-size:12px;min-height:33px}.shelf-grid .medicine-info{padding:0 9px 9px}.shelf-grid .medicine-title{padding:5px 9px 8px}.quick-help-section{padding-top:26px}.quick-help-section .section-heading{margin-bottom:12px}.quick-help-section .section-heading h2{font-size:19px}.quick-help-card{min-height:70px;padding:10px 12px;border-radius:14px}.quick-help-icon{width:38px;height:38px}.quick-help-copy strong{font-size:13px}.quick-help-copy small{font-size:11px}}
+	.search-wrap{position:relative;z-index:36}.search-suggestions{position:absolute;top:calc(100% - 20px);left:24px;right:24px;z-index:70;max-height:min(70vh,620px);overflow:auto;background:#fff;border:1px solid #e5e9e7;border-radius:15px;box-shadow:0 16px 45px #17251c20;padding:16px 18px;color:#34413b}.search-suggestion-heading{font-size:13px;margin:0 0 13px;color:#65716b}.search-suggestion-heading button{border:0;border-radius:5px;background:#eff6f1;color:#087e67;padding:4px 8px;font:inherit;font-weight:650;cursor:pointer}.suggestion-columns{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(230px,.8fr);gap:18px}.suggestion-title{display:flex;justify-content:space-between;align-items:center;padding-bottom:9px;border-bottom:1px solid #e6ece8;color:#c46c30;font-size:13px;font-weight:600;text-transform:capitalize}.suggestion-title button{border:0;background:transparent;color:#1476cb;font:inherit;font-weight:600;cursor:pointer}.suggestion-product{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px solid #f0f2f1}.suggestion-product-link{min-width:0;display:flex;align-items:center;gap:10px;color:inherit;text-decoration:none}.suggestion-product-link img,.suggestion-product-placeholder{width:42px;height:42px;object-fit:contain;border-radius:8px;background:#f7faf8;flex:none}.suggestion-product-placeholder{display:grid;place-items:center;color:#69917c}.suggestion-product-link>span:last-child{min-width:0}.suggestion-product-link strong,.suggestion-product-link small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.suggestion-product-link strong{font-size:12px;font-weight:600}.suggestion-product-link small{margin-top:4px;color:#89938e;font-size:10px}.suggestion-product-action{display:flex;flex-direction:column;align-items:flex-end;gap:5px;flex:none}.suggestion-product-action>span{font-size:11px;color:#59645e}.suggestion-product-action button{border:0;background:transparent;color:#d52b37;font-size:10px;font-weight:650;text-transform:uppercase;cursor:pointer}.suggestion-product-action button:disabled{color:#9aa39e;cursor:not-allowed}.composition-suggestion{display:block;width:100%;padding:12px 2px;text-align:left;border:0;border-bottom:1px solid #f0f2f1;background:white;color:#49534f;font:inherit;font-size:12px;cursor:pointer}.composition-suggestion:hover,.suggestion-product:hover{background:#f8fbf9}.suggestion-empty{padding:12px 2px;color:#89938e;font-size:12px}.search-box:focus-within{border-color:#6689ff;box-shadow:0 0 0 3px #6689ff20}
+	@media(max-width:760px){.search-suggestions{top:calc(100% - 10px);left:10px;right:10px;max-height:68vh;border-radius:0 0 13px 13px;padding:13px 12px}.suggestion-columns{grid-template-columns:1fr;gap:13px}.suggestion-compositions{border-top:1px solid #e8eeea;padding-top:10px}.suggestion-product-link strong{max-width:42vw}}
 </style>

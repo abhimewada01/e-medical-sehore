@@ -108,6 +108,8 @@
 		</h1>
 	</div>
 
+	<div class="shop-results-layout" class:with-compositions={data.compositions.length > 0}>
+	<div class="shop-results-main">
 	<!-- Medicine Grid -->
 	{#if data.medicines.length === 0}
 		<div class="text-center py-16 text-gray-400">
@@ -180,4 +182,24 @@
 			</div>
 		{/if}
 	{/if}
+	</div>
+	{#if data.compositions.length > 0}
+		<aside class="composition-panel" aria-label="Matching compositions">
+			<h2>Matching compositions</h2>
+			<div class="composition-list">
+				{#each data.compositions as composition (composition)}
+					<a href="/shop?q={encodeURIComponent(composition)}">{composition}</a>
+				{/each}
+			</div>
+		</aside>
+	{/if}
+	</div>
 </div>
+
+<style>
+	.shop-results-layout{display:block}.shop-results-layout.with-compositions{display:grid;grid-template-columns:minmax(0,1fr) 280px;gap:18px;align-items:start}.shop-results-main{min-width:0}.composition-panel{position:sticky;top:18px;overflow:hidden;border:1px solid #e3e8e5;border-radius:14px;background:white}.composition-panel h2{margin:0;padding:15px 17px;background:#344047;color:#fff;font-size:15px;font-weight:650}.composition-list a{display:block;padding:13px 15px;border-bottom:1px solid #e5e9e7;color:#3d4944;font-size:13px;text-decoration:none}.composition-list a:nth-child(odd){background:#f6f7f7}.composition-list a:hover{color:#137b61;background:#eaf5ef}.composition-list a:last-child{border-bottom:0}
+	.shop-results-layout.with-compositions .shop-results-main>div.grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+	@media(max-width:900px){.shop-results-layout.with-compositions{grid-template-columns:minmax(0,1fr) 230px;gap:12px}}
+	@media(max-width:900px){.shop-results-layout.with-compositions .shop-results-main>div.grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+	@media(max-width:680px){.shop-results-layout.with-compositions{display:flex;flex-direction:column}.shop-results-layout.with-compositions .shop-results-main{width:100%}.shop-results-layout.with-compositions .shop-results-main>div.grid{grid-template-columns:repeat(2,minmax(0,1fr))}.composition-panel{position:static;width:100%;order:-1}.composition-panel h2{padding:12px 14px}.composition-list a{padding:11px 13px}}
+</style>
