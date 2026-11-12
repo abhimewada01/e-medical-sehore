@@ -76,7 +76,7 @@
 		<div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
 			{#each data.medicines as med}
 				<div class="medicine-list-card bg-white rounded-2xl border border-gray-100 hover:shadow-md hover:border-purple-200 transition-all overflow-hidden group">
-					<a href="/shop/{med.id}" class="block text-inherit no-underline">
+					<a href={med.isDemo ? '/shop?q=Paracetamol' : `/shop/${med.id}`} class="block text-inherit no-underline">
 					<div class="aspect-square bg-gradient-to-br from-purple-50 to-indigo-50 flex items-center justify-center p-3">
 						{#if med.imageUrl}
 							<img src={med.imageUrl} alt={med.name} class="w-full h-full object-contain rounded-lg" />
@@ -94,14 +94,16 @@
 					</div>
 					</a>
 					<div class="px-3 pb-3">
-						<div class="flex items-center gap-1 mb-2">
+						{#if med.isDemo}<span class="text-xs text-amber-700 font-medium">Demo listing · price pending</span>{:else}<div class="flex items-center gap-1 mb-2">
 							<span class="text-purple-700 font-bold text-sm">₹{Number(med.discountedPrice).toFixed(2)}</span>
 							{#if Number(med.price) > Number(med.discountedPrice)}
 								<span class="text-xs text-gray-400 line-through">₹{Number(med.price).toFixed(2)}</span>
 							{/if}
-						</div>
+						</div>{/if}
 						<div class="flex items-center justify-between">
-							{#if med.requiresPrescription}
+							{#if med.isDemo}
+								<span class="text-xs text-gray-500">Not available to order</span>
+							{:else if med.requiresPrescription}
 								<span class="text-xs bg-orange-100 text-orange-600 px-2 py-0.5 rounded-full">Rx Required</span>
 							{:else if med.stockQuantity === 0}
 								<span class="text-xs text-red-500 font-medium">Out of Stock</span>

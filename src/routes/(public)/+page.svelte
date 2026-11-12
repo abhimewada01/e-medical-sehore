@@ -8,7 +8,7 @@
 	let activeSlide = $state(0);
 	let cartCount = $state(0);
 	let addedMedicine = $state<Record<string, boolean>>({});
-	type SearchProduct = { id: string; name: string; genericName: string | null; brandName: string | null; imageUrl: string | null; stockQuantity: number; discountedPrice: string; price: string; requiresPrescription: boolean; dosageForm: string };
+	type SearchProduct = { id: string; name: string; genericName: string | null; brandName: string | null; imageUrl: string | null; stockQuantity: number; discountedPrice: string | null; price: string | null; requiresPrescription: boolean; dosageForm: string; isDemo?: boolean };
 	let searchQuery = $state('');
 	let searchOpen = $state(false);
 	let searchLoading = $state(false);
@@ -139,11 +139,11 @@
 						{:else}
 							{#each searchSuggestions.products as med (med.id)}
 								<div class="suggestion-product">
-									<a href="/shop/{med.id}" class="suggestion-product-link" onclick={() => searchOpen = false}>
+									<a href={med.isDemo ? '/shop?q=Paracetamol' : `/shop/${med.id}`} class="suggestion-product-link" onclick={() => searchOpen = false}>
 										{#if med.imageUrl}<img src={med.imageUrl} alt="" />{:else}<span class="suggestion-product-placeholder"><Pill size={18} /></span>{/if}
 										<span><strong>{med.name}</strong><small>{med.dosageForm}{med.genericName ? ` · ${med.genericName}` : ''}</small></span>
 									</a>
-									<div class="suggestion-product-action"><span>₹{Number(med.discountedPrice).toFixed(2)}</span><button type="button" disabled={med.stockQuantity < 1} onclick={() => addSuggestedMedicine(med)}>{med.stockQuantity < 1 ? 'Unavailable' : 'Add to cart'}</button></div>
+									<div class="suggestion-product-action"><span>{med.isDemo ? 'Demo · price pending' : `₹${Number(med.discountedPrice).toFixed(2)}`}</span><button type="button" disabled={med.isDemo || med.stockQuantity < 1} onclick={() => addSuggestedMedicine(med)}>{med.isDemo ? 'Demo only' : med.stockQuantity < 1 ? 'Unavailable' : 'Add to cart'}</button></div>
 								</div>
 							{/each}
 						{/if}

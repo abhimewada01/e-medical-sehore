@@ -24,6 +24,24 @@ export const _FALLBACK_MEDICINES = [
 	{ id: 'f8', name: 'Multivitamin Complex + Zinc', genericName: 'Multivitamins', brandName: 'Becadexamin', dosageForm: 'Capsule', strength: 'Daily', packSize: '30 Capsules / Bottle', price: '60.00', discountedPrice: '52.00', stockQuantity: 350, requiresPrescription: false, isAgeRestricted: false, imageUrl: null, manufacturer: 'GSK' }
 ];
 
+const DEMO_PARACETAMOL = {
+	id: 'demo-paracetamol',
+	name: 'Paracetamol 500 mg Tablet',
+	genericName: 'Paracetamol',
+	brandName: null,
+	dosageForm: 'Tablet',
+	strength: '500 mg',
+	packSize: 'Demo listing · pack size pending',
+	price: '0.00',
+	discountedPrice: '0.00',
+	stockQuantity: 0,
+	requiresPrescription: false,
+	isAgeRestricted: false,
+	imageUrl: null,
+	manufacturer: 'Demo listing',
+	isDemo: true
+};
+
 export const load: PageServerLoad = async ({ url }) => {
 	const q = (url.searchParams.get('q') ?? '').trim().slice(0, 100);
 	const searchTerm = `%${q.replace(/[\\%_]/g, '\\$&')}%`;
@@ -99,8 +117,16 @@ export const load: PageServerLoad = async ({ url }) => {
 			.limit(limit)
 			.offset(offset);
 
+		const isParacetamolDemoQuery = /para|paracetamol/i.test(q);
+		const medicinesForPage = medsList.length > 0
+			? medsList.map((medicine) => ({ ...medicine, isDemo: false }))
+			: isParacetamolDemoQuery
+				? [DEMO_PARACETAMOL]
+				: (q || category || prescription ? [] : _FALLBACK_MEDICINES.map((medicine) => ({ ...medicine, isDemo: false })));
+		if (isParacetamolDemoQuery && medsList.length === 0 && compositions.length === 0) compositions = ['Paracetamol 500 mg'];
+
 		return {
-			medicines: medsList.length > 0 ? medsList : (q || category || prescription ? [] : _FALLBACK_MEDICINES),
+			medicines: medicinesForPage,
 			categories: categories.length > 0 ? categories : FALLBACK_CATEGORIES,
 			q, category, prescription, sortBy, page, compositions
 		};
@@ -114,9 +140,9 @@ export const load: PageServerLoad = async ({ url }) => {
 		if (prescription === 'no') filtered = filtered.filter(m => !m.requiresPrescription);
 
 		return {
-			medicines: filtered,
+			medicines: /para|paracetamol/i.test(q) ? [DEMO_PARACETAMOL] : filtered.map((medicine) => ({ ...medicine, isDemo: false })),
 			categories: FALLBACK_CATEGORIES,
-			q, category, prescription, sortBy, page, compositions: []
+			q, category, prescription, sortBy, page, compositions: /para|paracetamol/i.test(q) ? ['Paracetamol 500 mg'] : []
 		};
 	}
 };

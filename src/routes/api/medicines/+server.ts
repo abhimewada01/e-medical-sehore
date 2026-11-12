@@ -49,6 +49,24 @@ export const GET: RequestHandler = async ({ url }) => {
 			}
 		}
 	}
+	if (products.length === 0 && /para|paracetamol/i.test(q)) {
+		return json({
+			products: [{
+				id: 'demo-paracetamol',
+				name: 'Paracetamol 500 mg Tablet',
+				genericName: 'Paracetamol',
+				brandName: null,
+				imageUrl: null,
+				stockQuantity: 0,
+				discountedPrice: null,
+				price: null,
+				requiresPrescription: false,
+				dosageForm: 'Tablet',
+				isDemo: true
+			}],
+			compositions: ['Paracetamol 500 mg']
+		});
+	}
 
 	return json({ products, compositions: [...uniqueCompositions.values()].slice(0, 8) });
 };
