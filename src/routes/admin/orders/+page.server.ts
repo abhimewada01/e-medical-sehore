@@ -1,17 +1,23 @@
 import { db } from '$lib/server/db';
 import { orders, users } from '$lib/server/db/schema';
-import { eq, desc, inArray } from 'drizzle-orm';
+import { eq, desc, inArray, count } from 'drizzle-orm';
 import { fail } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { ORDER_STATUSES, isOrderStatus } from '$lib/server/orders';
 import { OrderWorkflowError, transitionAdminOrder } from '$lib/server/services/order-workflow';
 
 export const load: PageServerLoad = async ({ url }) => {
-	const status = url.searchParams.get('status') ?? '';
-	const page = Math.max(1, Number(url.searchParams.get('page') ?? '1'));
+	const requestedStatus = url.searchParams.get('status') ?? '';
+	const status = ORDER_STATUSES.includes(requestedStatus as (typeof ORDER_STATUSES)[number]) ? requestedStatus : '';
+	const requestedPage = Number(url.searchParams.get('page') ?? '1');
+	const page = Number.isSafeInteger(requestedPage) && requestedPage > 0 ? requestedPage : 1;
 	const limit = 25;
 
 	const conditions = status ? eq(orders.status, status) : undefined;
+	const [totalRow] = await db.select({ total: count() }).from(orders).where(conditions);
+	const totalOrders = Number(totalRow?.total ?? 0);
+	const totalPages = Math.max(1, Math.ceil(totalOrders / limit));
+	const currentPage = Math.min(page, totalPages);
 
 	const orderList = await db.select({
 		id: orders.id,
@@ -29,7 +35,7 @@ export const load: PageServerLoad = async ({ url }) => {
 		.where(conditions)
 		.orderBy(desc(orders.createdAt))
 		.limit(limit)
-		.offset((page - 1) * limit);
+		.offset((currentPage - 1) * limit);
 
 	// Get customer names
 	const customerIds = [...new Set(orderList.map(o => o.customerId))];
@@ -42,7 +48,7 @@ export const load: PageServerLoad = async ({ url }) => {
 
 	const ordersWithCustomers = orderList.map(o => ({ ...o, customerName: customerMap[o.customerId] ?? 'Unknown' }));
 
-	return { orders: ordersWithCustomers, statuses: ORDER_STATUSES, selectedStatus: status, page };
+	return { orders: ordersWithCustomers, statuses: ORDER_STATUSES, selectedStatus: status, page: currentPage, totalOrders, totalPages, limit };
 };
 
 export const actions: Actions = {

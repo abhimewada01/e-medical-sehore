@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { Package, FileText, Wallet, User, LogOut, ShieldCheck } from 'lucide-svelte';
+	import { page } from '$app/stores';
 	import type { LayoutData } from './$types';
 
 	let { data, children }: {  data: LayoutData; children: import("svelte").Snippet  } = $props();
@@ -38,21 +39,20 @@
 	</aside>
 
 	<!-- Main content -->
-	<div class="flex-1 md:ml-56">
+	<div class="flex-1 md:ml-56 pb-20 md:pb-0">
 		<!-- Mobile top bar -->
-		<div class="md:hidden bg-white border-b border-gray-100 px-4 py-3 flex items-center justify-between">
+		<div class="md:hidden sticky top-0 z-20 bg-white border-b border-gray-100 px-4 py-3 flex items-center justify-between">
 			<a href="/" class="font-bold text-purple-700">E-Medical Sehore</a>
-			<div class="flex items-center gap-3">
-				{#each navItems as item}
-					<a href={item.href} class="text-gray-500 hover:text-purple-600">
-						<item.icon size={20} />
-					</a>
-				{/each}
-				<a href="/auth/logout" class="text-red-400 hover:text-red-600">
-					<LogOut size={20} />
-				</a>
-			</div>
+			<a href="/auth/logout" class="text-sm font-medium text-red-500">Logout</a>
 		</div>
 		{@render children()}
+		<nav aria-label="Customer navigation" class="md:hidden fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 border-t border-gray-200 bg-white/95 px-1 pb-[env(safe-area-inset-bottom)] shadow-[0_-4px_16px_rgba(15,23,42,0.08)] backdrop-blur">
+			{#each navItems as item}
+				<a href={item.href} class="flex min-h-16 flex-col items-center justify-center gap-1 px-1 text-[10px] font-medium {$page.url.pathname === item.href || (item.href !== '/customer/dashboard' && $page.url.pathname.startsWith(`${item.href}/`)) ? 'text-purple-700' : 'text-gray-500'}">
+					<item.icon size={19} />
+					<span class="truncate max-w-full">{item.label === 'Age eligibility' ? 'Age check' : item.label === 'Reward Wallet' ? 'Wallet' : item.label === 'Dashboard' ? 'Home' : item.label === 'My Orders' ? 'Orders' : 'Rx'}</span>
+				</a>
+			{/each}
+		</nav>
 	</div>
 </div>

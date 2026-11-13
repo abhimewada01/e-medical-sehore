@@ -1,6 +1,6 @@
 import { redirect, fail } from '@sveltejs/kit';
 import { db } from '$lib/server/db';
-import { orders, orderItems, medicines, customerAddresses, loyaltyWallets, loyaltyTransactions, inventoryTransactions, notifications, adminSettings, doctors, doctorReferralEvents, prescriptions } from '$lib/server/db/schema';
+import { orders, orderItems, medicines, customerAddresses, loyaltyWallets, loyaltyTransactions, inventoryTransactions, notifications, adminSettings, doctors, doctorReferralEvents, prescriptions, users } from '$lib/server/db/schema';
 import { and, eq, inArray, gte, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import type { Actions, PageServerLoad } from './$types';
@@ -275,6 +275,19 @@ export const actions: Actions = {
 				type: 'ORDER_STATUS',
 				link: `/customer/orders/${order.id}`
 			});
+			const pharmacyTeam = await tx.select({ id: users.id }).from(users).where(and(
+				eq(users.isActive, true),
+				inArray(users.role, ['SUPER_ADMIN', 'PHARMACY_ADMIN', 'PHARMACIST'])
+			));
+			if (pharmacyTeam.length > 0) {
+				await tx.insert(notifications).values(pharmacyTeam.map((member) => ({
+					userId: member.id,
+					title: 'New order received',
+					message: `Order ${orderNumber} is ready for pharmacy review.`,
+					type: 'ORDER_STATUS',
+					link: `/admin/orders/${order.id}`
+				})));
+			}
 			if (referringDoctor) {
 				await tx.insert(doctorReferralEvents).values({
 					doctorId: referringDoctor.id,

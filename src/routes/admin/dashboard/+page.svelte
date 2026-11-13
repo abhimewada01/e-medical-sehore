@@ -35,7 +35,8 @@
 	<title>Admin Dashboard – E-Medical Sehore</title>
 </svelte:head>
 
-<div class="p-6">
+
+<div class="p-4 sm:p-6">
 	<div class="mb-6">
 		<h1 class="text-2xl font-bold text-gray-800">Dashboard</h1>
 		<p class="text-gray-500 text-sm mt-1">Pharmacy analytics overview</p>
@@ -95,7 +96,17 @@
 		{#if recentOrders.length === 0}
 			<div class="p-8 text-center text-gray-400">No orders yet.</div>
 		{:else}
-			<div class="overflow-x-auto">
+			<div class="divide-y divide-gray-100 md:hidden">
+				{#each recentOrders as order}
+					<a href="/admin/orders/{order.id}" class="block p-4 active:bg-purple-50">
+						<div class="flex justify-between gap-3">
+							<div class="min-w-0"><div class="font-semibold text-purple-700 truncate">{order.orderNumber}</div><div class="mt-1 text-sm text-gray-700 truncate">{order.customerName}</div><div class="mt-1 text-xs text-gray-400">{new Date(order.createdAt).toLocaleString('en-IN')}</div></div>
+							<div class="shrink-0 text-right"><div class="font-bold text-gray-800">₹{Number(order.grandTotal).toLocaleString('en-IN')}</div><span class="mt-2 inline-block rounded-full bg-gray-100 px-2 py-1 text-[11px] text-gray-700">{order.status.replace(/_/g, ' ')}</span></div>
+						</div>
+					</a>
+				{/each}
+			</div>
+			<div class="hidden md:block overflow-x-auto">
 				<table class="w-full text-sm">
 					<thead class="bg-gray-50 border-b border-gray-100">
 						<tr>
