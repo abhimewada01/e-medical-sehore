@@ -1,10 +1,33 @@
 <script lang="ts">
 	import type { PageData } from './$types';
 	import { enhance } from '$app/forms';
-	import { goto } from '$app/navigation';
-	import { page } from '$app/stores';
+	import { goto, invalidateAll } from '$app/navigation';
+	import { onMount } from 'svelte';
+	import { RefreshCw } from 'lucide-svelte';
 
 	let { data }: {  data: PageData  } = $props();
+	let refreshing = $state(false);
+	let refreshFailed = $state(false);
+	let lastRefreshed = $state(new Date());
+	onMount(() => {
+		const timer = window.setInterval(() => {
+			if (!document.hidden) void refreshOrders();
+		}, 30_000);
+		return () => window.clearInterval(timer);
+	});
+
+	async function refreshOrders() {
+		refreshing = true;
+		try {
+			await invalidateAll();
+			lastRefreshed = new Date();
+			refreshFailed = false;
+		} catch {
+			refreshFailed = true;
+		} finally {
+			refreshing = false;
+		}
+	}
 
 	const statusColors: Record<string, string> = {
 		PENDING: 'bg-yellow-100 text-yellow-700',
@@ -41,11 +64,22 @@
 <div class="p-4 sm:p-6">
 	<div class="flex flex-wrap items-center justify-between gap-2 mb-5 sm:mb-6">
 		<h1 class="text-2xl font-bold text-gray-800">Orders</h1>
-		<span class="text-sm text-gray-500">{data.totalOrders} {data.selectedStatus ? data.selectedStatus.toLowerCase().replace(/_/g, ' ') : 'total'} orders</span>
+		<div class="flex items-center gap-2">
+			<span class="text-sm text-gray-500">{data.totalOrders} {data.selectedStatus ? data.selectedStatus.toLowerCase().replace(/_/g, ' ') : 'total'} orders</span>
+			<button type="button" onclick={refreshOrders} disabled={refreshing} aria-label="Refresh orders" title="Refresh orders" class="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 hover:border-purple-300 hover:text-purple-700 disabled:opacity-50"><RefreshCw size={16} class={refreshing ? 'animate-spin' : ''} /></button>
+		</div>
 	</div>
+	{#if refreshFailed}<p role="status" class="-mt-3 mb-4 text-xs text-red-600">Could not refresh orders. Check your connection and try again.</p>{/if}
 
 	<!-- Status filter tabs -->
-	<div class="flex gap-2 mb-5 overflow-x-auto pb-2 -mx-1 px-1">
+	<div class="mb-5 md:hidden">
+		<label for="order-status-filter" class="mb-1 block text-xs font-medium text-gray-500">Filter orders</label>
+		<select id="order-status-filter" value={data.selectedStatus} onchange={(event) => filterByStatus(event.currentTarget.value)} class="min-h-11 w-full rounded-xl border border-gray-200 bg-white px-3 text-sm text-gray-700 focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-100">
+			<option value="">All orders</option>
+			{#each data.statuses as status}<option value={status}>{status.replace(/_/g, ' ')}</option>{/each}
+		</select>
+	</div>
+	<div class="hidden md:flex gap-2 mb-5 flex-wrap">
 			<button onclick={() => filterByStatus('')} class="shrink-0 px-3 py-2 rounded-lg text-xs font-medium transition-colors {!data.selectedStatus ? 'bg-purple-600 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:border-purple-300'}">
 			All
 		</button>
@@ -77,7 +111,7 @@
 					</div>
 				</a>
 			{/each}
-			{#if data.orders.length === 0}<div class="px-5 py-10 text-center text-gray-400">No orders found.</div>{/if}
+			{#if data.orders.length === 0}<div class="px-5 py-10 text-center"><div class="font-medium text-gray-700">{data.selectedStatus ? 'No orders match this status.' : 'No orders have been placed yet.'}</div><p class="mt-1 text-xs text-gray-400">New orders appear here after checkout. Last checked {lastRefreshed.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}.</p></div>{/if}
 		</div>
 		<div class="hidden md:block overflow-x-auto">
 			<table class="w-full text-sm">
@@ -126,7 +160,7 @@
 						</tr>
 					{/each}
 					{#if data.orders.length === 0}
-						<tr><td colspan="7" class="px-5 py-10 text-center text-gray-400">No orders found.</td></tr>
+						<tr><td colspan="7" class="px-5 py-10 text-center text-gray-400">{data.selectedStatus ? 'No orders match this status.' : 'No orders have been placed yet.'}</td></tr>
 					{/if}
 				</tbody>
 			</table>
