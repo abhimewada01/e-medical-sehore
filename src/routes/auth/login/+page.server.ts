@@ -11,6 +11,11 @@ import { loginSchema } from '$lib/server/validation/auth';
 
 const MAX_LOGIN_ATTEMPTS = 10;
 const LOGIN_WINDOW_MS = 15 * 60 * 1000;
+const fallbackLoginAttempts = new Map<string, { attempts: number; windowEndsAt: Date }>();
+
+function isMissingRateLimitTable(cause: unknown) {
+	return typeof cause === 'object' && cause !== null && 'code' in cause && cause.code === '42P01';
+}
 
 function loginLimitKey(ip: string) {
 	return createHmac('sha256', process.env.JWT_SECRET ?? 'local-rate-limit-key').update(ip).digest('hex');
@@ -51,11 +56,26 @@ export const actions: Actions = {
 		const ip = getClientAddress();
 		const now = new Date();
 		const key = loginLimitKey(ip);
-		const [currentAttempts] = await db.select().from(loginRateLimits).where(eq(loginRateLimits.key, key)).limit(1);
+		let rateLimitTableAvailable = true;
+		let currentAttempts: typeof loginRateLimits.$inferSelect | undefined;
+		try {
+			[currentAttempts] = await db.select().from(loginRateLimits).where(eq(loginRateLimits.key, key)).limit(1);
+		} catch (cause) {
+			if (!isMissingRateLimitTable(cause)) throw cause;
+			rateLimitTableAvailable = false;
+		}
+		if (!rateLimitTableAvailable) {
+			for (const [attemptKey, record] of fallbackLoginAttempts) {
+				if (record.windowEndsAt <= now) fallbackLoginAttempts.delete(attemptKey);
+			}
+			currentAttempts = fallbackLoginAttempts.has(key)
+				? { key, attempts: fallbackLoginAttempts.get(key)!.attempts, windowEndsAt: fallbackLoginAttempts.get(key)!.windowEndsAt, updatedAt: now }
+				: undefined;
+		}
 		if (currentAttempts && currentAttempts.windowEndsAt > now && currentAttempts.attempts >= MAX_LOGIN_ATTEMPTS) {
 			return fail(429, { error: 'Too many sign-in attempts. Please wait and try again.', email });
 		}
-		if (currentAttempts && currentAttempts.windowEndsAt <= now) {
+		if (rateLimitTableAvailable && currentAttempts && currentAttempts.windowEndsAt <= now) {
 			await db.delete(loginRateLimits).where(eq(loginRateLimits.key, key));
 		}
 
@@ -63,18 +83,24 @@ export const actions: Actions = {
 		const valid = !!user?.isActive && !!user.passwordHash && await verifyPassword(password, user.passwordHash);
 		if (!valid || !user) {
 			const windowEndsAt = new Date(now.getTime() + LOGIN_WINDOW_MS);
-			await db.insert(loginRateLimits).values({ key, attempts: 1, windowEndsAt, updatedAt: now })
-				.onConflictDoUpdate({
-					target: loginRateLimits.key,
-					set: {
-						attempts: sql`CASE WHEN ${loginRateLimits.windowEndsAt} <= ${now} THEN 1 ELSE ${loginRateLimits.attempts} + 1 END`,
-						windowEndsAt: sql`CASE WHEN ${loginRateLimits.windowEndsAt} <= ${now} THEN ${windowEndsAt} ELSE ${loginRateLimits.windowEndsAt} END`,
-						updatedAt: now
-					}
-				});
+			if (rateLimitTableAvailable) {
+				await db.insert(loginRateLimits).values({ key, attempts: 1, windowEndsAt, updatedAt: now })
+					.onConflictDoUpdate({
+						target: loginRateLimits.key,
+						set: {
+							attempts: sql`CASE WHEN ${loginRateLimits.windowEndsAt} <= ${now} THEN 1 ELSE ${loginRateLimits.attempts} + 1 END`,
+							windowEndsAt: sql`CASE WHEN ${loginRateLimits.windowEndsAt} <= ${now} THEN ${windowEndsAt} ELSE ${loginRateLimits.windowEndsAt} END`,
+							updatedAt: now
+						}
+					});
+			} else {
+				const fallback = currentAttempts && currentAttempts.windowEndsAt > now ? currentAttempts : undefined;
+				fallbackLoginAttempts.set(key, { attempts: (fallback?.attempts ?? 0) + 1, windowEndsAt: fallback?.windowEndsAt ?? windowEndsAt });
+			}
 			return fail(400, { error: 'Invalid email or password', email });
 		}
-		await db.delete(loginRateLimits).where(eq(loginRateLimits.key, key));
+		if (rateLimitTableAvailable) await db.delete(loginRateLimits).where(eq(loginRateLimits.key, key));
+		else fallbackLoginAttempts.delete(key);
 		if (user.passwordHash?.startsWith('sha256:')) {
 			await db.update(users).set({ passwordHash: await hashPassword(password), updatedAt: new Date() })
 				.where(eq(users.id, user.id));
