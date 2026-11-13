@@ -1,6 +1,6 @@
 import { db } from '$lib/server/db';
 import { orders, users } from '$lib/server/db/schema';
-import { eq, desc, inArray, count } from 'drizzle-orm';
+import { eq, desc, count } from 'drizzle-orm';
 import { fail } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { ORDER_STATUSES, isOrderStatus } from '$lib/server/orders';
@@ -14,12 +14,7 @@ export const load: PageServerLoad = async ({ url }) => {
 	const limit = 25;
 
 	const conditions = status ? eq(orders.status, status) : undefined;
-	const [totalRow] = await db.select({ total: count() }).from(orders).where(conditions);
-	const totalOrders = Number(totalRow?.total ?? 0);
-	const totalPages = Math.max(1, Math.ceil(totalOrders / limit));
-	const currentPage = Math.min(page, totalPages);
-
-	const orderList = await db.select({
+	const loadOrderRows = (offset: number) => db.select({
 		id: orders.id,
 		orderNumber: orders.orderNumber,
 		status: orders.status,
@@ -30,23 +25,24 @@ export const load: PageServerLoad = async ({ url }) => {
 		pickupToken: orders.pickupToken,
 		prescriptionId: orders.prescriptionId,
 		createdAt: orders.createdAt,
-		customerId: orders.customerId
+		customerId: orders.customerId,
+		customerName: users.fullName
 	}).from(orders)
+		.leftJoin(users, eq(users.id, orders.customerId))
 		.where(conditions)
 		.orderBy(desc(orders.createdAt))
 		.limit(limit)
-		.offset((currentPage - 1) * limit);
+		.offset(offset);
 
-	// Get customer names
-	const customerIds = [...new Set(orderList.map(o => o.customerId))];
-	const customerMap: Record<string, string> = {};
-	if (customerIds.length > 0) {
-		const names = await db.select({ id: users.id, fullName: users.fullName }).from(users)
-			.where(inArray(users.id, customerIds));
-		names.forEach(c => customerMap[c.id] = c.fullName);
-	}
-
-	const ordersWithCustomers = orderList.map(o => ({ ...o, customerName: customerMap[o.customerId] ?? 'Unknown' }));
+	const [totalRows, requestedOrders] = await Promise.all([
+		db.select({ total: count() }).from(orders).where(conditions),
+		loadOrderRows((page - 1) * limit)
+	]);
+	const totalOrders = Number(totalRows[0]?.total ?? 0);
+	const totalPages = Math.max(1, Math.ceil(totalOrders / limit));
+	const currentPage = Math.min(page, totalPages);
+	const orderList = currentPage === page ? requestedOrders : await loadOrderRows((currentPage - 1) * limit);
+	const ordersWithCustomers = orderList.map(o => ({ ...o, customerName: o.customerName ?? 'Unknown' }));
 
 	return { orders: ordersWithCustomers, statuses: ORDER_STATUSES, selectedStatus: status, page: currentPage, totalOrders, totalPages, limit };
 };

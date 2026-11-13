@@ -1,7 +1,7 @@
 import { SignJWT, jwtVerify } from 'jose';
 import { db } from '../db';
 import { userSessions, users } from '../db/schema';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { env } from '$env/dynamic/private';
 import { randomBytes } from 'crypto';
 
@@ -31,11 +31,13 @@ export async function validateSession(token: string) {
 		const { payload } = await jwtVerify(token, SECRET);
 		if (typeof payload.sessionId !== 'string') return null;
 		const sessionId = payload.sessionId;
-		const rows = await db.select().from(userSessions).where(eq(userSessions.id, sessionId)).limit(1);
-		if (!rows.length || rows[0].expiresAt < new Date()) return null;
-		const userRows = await db.select().from(users).where(eq(users.id, rows[0].userId)).limit(1);
-		if (!userRows.length || !userRows[0].isActive) return null;
-		return { session: rows[0], user: userRows[0] };
+		const [record] = await db.select({ session: userSessions, user: users })
+			.from(userSessions)
+			.innerJoin(users, eq(users.id, userSessions.userId))
+			.where(and(eq(userSessions.id, sessionId), eq(users.isActive, true)))
+			.limit(1);
+		if (!record || record.session.expiresAt < new Date()) return null;
+		return record;
 	} catch {
 		return null;
 	}
