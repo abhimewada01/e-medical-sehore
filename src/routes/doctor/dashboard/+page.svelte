@@ -102,7 +102,7 @@
 				</div>
 				<div class="flex justify-between">
 					<span class="text-gray-500">License No.</span>
-					<span class="font-medium text-gray-800">{doctor.licenseNumber}</span>
+					<span class="font-medium text-gray-800">{doctor.licenseNumber.startsWith('NOT_PROVIDED-') ? 'Not provided' : doctor.licenseNumber}</span>
 				</div>
 				<div class="flex justify-between">
 					<span class="text-gray-500">Clinic</span>

@@ -76,25 +76,22 @@ export const actions: Actions = {
 			fullName: z.string().min(2).max(100),
 			email: z.string().email(),
 			phone: z.string().min(10).max(15),
-			licenseNumber: z.string().min(3).max(100),
 			qualification: z.string().min(2).max(255),
-			specialization: z.string().min(2).max(255),
 			clinicName: z.string().min(2).max(255),
-			clinicAddress: z.string().min(5),
-			bio: z.string().optional().or(z.literal(''))
+			clinicAddress: z.string().min(5)
 		});
 		const formData = Object.fromEntries(await request.formData());
 		const result = schema.safeParse(formData);
 		if (!result.success) return fail(400, { errors: result.error.flatten().fieldErrors, values: formData });
 
-		const { fullName, email, phone, licenseNumber, qualification, specialization, clinicName, clinicAddress, bio } = result.data;
+		const { fullName, email, phone, qualification, clinicName, clinicAddress } = result.data;
+		// Keep the existing non-null database column compatible without presenting a placeholder as a real license.
+		const licenseNumber = `NOT_PROVIDED-${randomBytes(8).toString('hex').toUpperCase()}`;
+		const specialization = 'Not specified';
 
 		// Check if email exists
 		const existing = await db.select({ id: users.id }).from(users).where(eq(users.email, email.toLowerCase()));
 		if (existing.length) return fail(400, { error: 'Email already registered', values: formData });
-		const existingLicense = await db.select({ id: doctors.id }).from(doctors).where(eq(doctors.licenseNumber, licenseNumber)).limit(1);
-		if (existingLicense.length) return fail(400, { error: 'This doctor license number is already registered', values: formData });
-
 		// Generate temp password
 		const tempPassword = randomBytes(8).toString('hex');
 		const { hashPassword } = await import('$lib/server/auth/password');
@@ -125,7 +122,7 @@ export const actions: Actions = {
 					referralCode: refCode,
 					qrCodeDataUrl: qrDataUrl,
 					verificationStatus: 'PENDING',
-					bio: bio || null,
+					bio: null,
 					isActive: true
 				});
 			});

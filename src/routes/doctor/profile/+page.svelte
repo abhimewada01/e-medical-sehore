@@ -12,7 +12,7 @@
 	<title>Doctor Profile - E-Medical Sehore</title>
 </svelte:head>
 
-<div class="p-6 max-w-2xl">
+<div class="max-w-2xl p-4 sm:p-6">
 	<div class="flex items-center gap-3 mb-6">
 		<User size={28} class="text-blue-600" />
 		<div>
@@ -38,7 +38,7 @@
 			<input id="phone" type="tel" name="phone" value={doctor?.phone} required class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-blue-500" />
 		</div>
 
-		<div class="grid grid-cols-2 gap-4">
+		<div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
 			<div>
 				<label for="qualification" class="block text-sm font-medium text-gray-700 mb-1">Qualification *</label>
 				<input id="qualification" type="text" name="qualification" value={doctor?.qualification} required class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-blue-500" />
